@@ -117,6 +117,19 @@ int main()
 }
 '''
 
+    conf.env.append_value("CXXFLAGS", ["-I/opt/ibm/ILOG/CPLEX_Studio1271/cplex/include",
+                                       "-I/opt/ibm/ILOG/CPLEX_Studio1271/concert/include",
+                                       "-DIL_STD"])
+
+    conf.env.append_value("LINKFLAGS", ["-L/opt/ibm/ILOG/CPLEX_Studio1271/cplex/lib/x86-64_linux/static_pic",
+                                        "-L/opt/ibm/ILOG/CPLEX_Studio1271/concert/lib/x86-64_linux/static_pic"])
+    
+    conf.env['lilocplex'] = conf.check(mandatory = True, lib='ilocplex', uselib_store='ILOCPLEX')
+    conf.env['lconcert']  = conf.check(mandatory = True, lib='concert', uselib_store="CONCERT")
+    conf.env['lcplex']    = conf.check(mandatory = True, lib='cplex', uselib_store="CPLEX")
+    conf.env['lm']        = conf.check(mandatory = True, lib='m', uselib_store="M")
+    conf.env['lpthread']  = conf.check(mandatory = True, lib='pthread', uselib_store="PTHREAD")
+
     conf.env['DL'] = conf.check(mandatory=True, lib='dl', define_name='DL', uselib_store='DL')
     conf.env['XML2'] = conf.check(mandatory=True, lib='xml2', define_name='XML2', uselib_store='XML2')
     
@@ -144,6 +157,8 @@ int main()
         # if they are enabled.
         conf.env['MODULES_NOT_BUILT'].append('openflow')
 
+    
+
 
 
 def build(bld):
@@ -164,6 +179,12 @@ def build(bld):
     if bld.env['OPENFLOW'] and bld.env['DL'] and bld.env['XML2']:
         obj.use.extend('OPENFLOW DL XML2'.split())
         obj_test.use.extend('OPENFLOW DL XML2'.split())
+
+    obj.use.append("ILOCPLEX")
+    obj.use.append("CONCERT")
+    obj.use.append("CPLEX")
+    obj.use.append("M")
+    obj.use.append("PTHREAD")
 
     headers = bld(features='ns3header')
     headers.module = 'openflow'
@@ -195,6 +216,9 @@ def build(bld):
         obj.source.append('queue/diff-queue.cc')
         obj.source.append('queue/mice-queue.cc')
         obj.source.append('queue/elephant-queue.cc')
+        obj.source.append('queue/queue-config.cc')
+        #cplex test
+        obj.source.append('solver/cplex-solver.cc')
 
         obj.env.append_value('DEFINES', 'NS3_OPENFLOW')
         obj_test.source.append('test/openflow-switch-test-suite.cc')
@@ -211,7 +235,7 @@ def build(bld):
         headers.source.append('model/flow-radar-config.h')
         headers.source.append('model/flow-field.h')
         #WorkQueue for multithread
-        #headers.source.append('model/work-queue.h')
+        headers.source.append('model/work-queue.h')
         #LSQR
         headers.source.append('model/LSXR/lsqrBase.h')
         headers.source.append('model/LSXR/lsqrDense.h')
@@ -227,6 +251,7 @@ def build(bld):
         headers.source.append("queue/diff-queue.h")
         headers.source.append("queue/mice-queue.h")
         headers.source.append("queue/elephant-queue.h")
+        headers.source.append("queue/queue-config.h")
         
 
     if bld.env['ENABLE_EXAMPLES'] and bld.env['ENABLE_OPENFLOW']:

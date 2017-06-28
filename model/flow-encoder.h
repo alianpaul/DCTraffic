@@ -106,10 +106,6 @@ public:
 				 NetDevice::PacketType packetType);
 private:
 
-  /* Extract the 5 tuple flow infro from packet to struct FlowField
-   */
-  FlowField    FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol) const;
-
   /* Check the flow with the flow filter, if the flow is new, and update the 
    * flow filter and return true;
    * else return false;

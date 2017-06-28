@@ -11,6 +11,7 @@ namespace ns3 {
 
 class MiceQueue;
 class ElephantQueue;
+class QueueConfig;
 
 class DiffQueue : public Queue {
 
@@ -20,35 +21,40 @@ public:
   DiffQueue ();
   virtual ~DiffQueue();
 
+  /* Init the queue settings according to the queue config data(m_queueConfig)
+   */
+  void Init();
+
   void      SetMiceMaxPackets(uint32_t maxPackets);
   uint32_t  GetMiceMaxPackets() const;
   void      SetElephantMaxPackets(uint32_t maxPackets);
   uint32_t  GetElephantMaxPackets() const;
 
-  struct ElephantFlowEntry
-  {
-    ElephantFlowEntry() : dropRate(0) {}
-    double dropRate; 
-  };
+  void      SetMiceWeight(uint16_t miceW);
+  uint16_t  GetMiceWeight() const;
+  void      SetTotalWeight(uint16_t totalW);
+  uint16_t  GetTotalWeight() const;
 
-  typedef boost::unordered_map<FlowField, ElephantFlowEntry, FlowFieldBoostHash> ElephantFlowInfo;
+  void      SetQueueConfig (Ptr<QueueConfig> qc);
 
 private:
   virtual bool DoEnqueue (Ptr<QueueItem> item);
   virtual Ptr<QueueItem> DoDequeue ();
   virtual Ptr<const QueueItem> DoPeek() const;
 
-  Ptr<MiceQueue>      m_miceQueue;
-  uint32_t            m_miceMaxPackets;
-  uint32_t            m_miceMaxBytes;
+  Ptr<MiceQueue>       m_miceQueue;
+  uint32_t             m_miceMaxPackets;
+  uint32_t             m_miceMaxBytes;
 
-  Ptr<ElephantQueue>  m_elephantQueue;
-  uint32_t            m_elephantMaxPackets;
-  uint32_t            m_elephantMaxBytes;
+  Ptr<ElephantQueue>   m_elephantQueue;
+  uint32_t             m_elephantMaxPackets;
+  uint32_t             m_elephantMaxBytes;
   
-  ElephantFlowInfo    m_elephantFlowInfo; 
-  //use this data structure to check wheather the flow is a mice/elephant.
-  
+  Ptr<QueueConfig>     m_queueConfig;
+
+  uint16_t             m_miceWeight;
+  uint16_t             m_totalWeight;
+  uint16_t             m_currentQueue;
 };
 
 }

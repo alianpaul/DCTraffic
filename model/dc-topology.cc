@@ -16,6 +16,8 @@
 #include "ns3/arp-cache.h"
 #include "ns3/object-factory.h"
 #include "ns3/csma-net-device.h"
+#include "ns3/queue-config.h"
+#include "ns3/diff-queue.h"
 
 #include "openflow-switch-net-device.h"
 #include "flow-encoder.h"
@@ -414,19 +416,23 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
   else if(queueType == DIFF_QUEUE)
     {
       NS_LOG_INFO("Queue Type: DiffQueue");
-      ObjectFactory m_queueFactory;
-      m_queueFactory.SetTypeId ("ns3::DiffQueue");
-      m_queueFactory.Set("MiceMaxPackets", UintegerValue(50));
-      m_queueFactory.Set("ElephantMaxPackets", UintegerValue(100));
-      m_queueFactory.Set("MaxPackets", UintegerValue(MAX_INT));
+      ObjectFactory queueFactory;
+      queueFactory.SetTypeId ("ns3::DiffQueue");
+      queueFactory.Set("MiceMaxPackets", UintegerValue(50));
+      queueFactory.Set("ElephantMaxPackets", UintegerValue(100));
+      queueFactory.Set("MaxPackets", UintegerValue(MAX_INT));
 
       for(unsigned isw = 0; isw < m_switchPortDevices.size(); ++isw)
 	{
-	  NetDeviceContainer& swDevices = m_switchPortDevices[isw];
+	  NetDeviceContainer& swDevices   = m_switchPortDevices[isw];
+	  Ptr<QueueConfig>    queueConfig = Create<QueueConfig>();   //1 queue config per switch
+
 	  for(unsigned idevice = 0; idevice < swDevices.GetN(); ++idevice)
 	    {
 	      Ptr<CsmaNetDevice> device = DynamicCast<CsmaNetDevice> (swDevices.Get(idevice));
-	      Ptr<Queue>         queue  = m_queueFactory.Create<Queue> () ;
+	      Ptr<DiffQueue>     queue  = DynamicCast<DiffQueue> (queueFactory.Create<Queue>());
+	      queue->SetQueueConfig(queueConfig);
+	      queue->Init();
 	      device->SetQueue(queue);
 	      
 	    }

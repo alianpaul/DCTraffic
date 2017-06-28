@@ -68,10 +68,6 @@ public:
   
 private:
 
-  /* Extract the 5 tuple flow infro from packet to struct FlowField
-   */
-  FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol) const;
-
   void      UpdateMtxBlock(const FlowField& flow, bool isNew,
 			   uint16_t blockIdx,
 			   std::vector<uint16_t> countTableIdxs);

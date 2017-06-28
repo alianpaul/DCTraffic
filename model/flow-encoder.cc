@@ -23,7 +23,7 @@ unsigned FlowEncoder::m_nextSeed = 0;
 FlowEncoder::FlowEncoder() : m_packetReceived(0)
 {
   Clear();
-  for( size_t ithSeed = 0; ithSeed < NUM_COUNT_HASH; ++ithSeed )
+  for( int ithSeed = 0; ithSeed < NUM_COUNT_HASH; ++ithSeed )
     {
       m_seeds.push_back( ++m_nextSeed ); //ensure 
     }
@@ -63,7 +63,7 @@ FlowEncoder::ContainsFlow (const FlowField& flow)
 
   bool hasFlow = true;
 
-  for(unsigned ith = 0; ith < NUM_FLOW_HASH; ++ith)
+  for(int ith = 0; ith < NUM_FLOW_HASH; ++ith)
     {
       if( !m_flowFilter[filterIdxs[ith]] )
 	{
@@ -78,7 +78,7 @@ void
 FlowEncoder::ClearFlowInCountTable(const FlowField& flow)
 {
   std::vector<uint32_t> tableIdxs = GetCountTableIdx (flow);
-  for(unsigned ith = 0; ith < NUM_COUNT_HASH; ++ith )
+  for(int ith = 0; ith < NUM_COUNT_HASH; ++ith )
     {     
       CountTableEntry& entry = m_countTable[tableIdxs[ith]];
       entry.XORFlow (flow);
@@ -131,7 +131,7 @@ FlowEncoder::UpdateFlowFilter(const FlowField& flow)
 
   bool isNew = false;
 
-  for(unsigned ith = 0; ith < NUM_FLOW_HASH; ++ith)
+  for(int ith = 0; ith < NUM_FLOW_HASH; ++ith)
     {
       if( !m_flowFilter[filterIdxs[ith]] )
 	{
@@ -152,7 +152,7 @@ FlowEncoder::UpdateCountTable(const FlowField& flow, bool isNew)
   //if is new, update the flow fields.
   if (isNew)
     {
-      for(unsigned ith = 0; ith < NUM_COUNT_HASH; ++ith)
+      for(int ith = 0; ith < NUM_COUNT_HASH; ++ith)
 	{
 	  CountTableEntry& entry = m_countTable[tableIdxs[ith]];
 
@@ -164,7 +164,7 @@ FlowEncoder::UpdateCountTable(const FlowField& flow, bool isNew)
     }
   
   //update packet count
-  for(unsigned ith = 0; ith < NUM_COUNT_HASH; ++ith)
+  for(int ith = 0; ith < NUM_COUNT_HASH; ++ith)
     {
       m_countTable[tableIdxs[ith]].packet_cnt++; 
     }
@@ -191,7 +191,7 @@ FlowEncoder::GetFlowFilterIdx(const FlowField& flow)
   std::vector<uint32_t> filterIdxs;
   
   char buf[13];
-  for(unsigned ith = 0; ith < NUM_FLOW_HASH; ++ith)
+  for(int ith = 0; ith < NUM_FLOW_HASH; ++ith)
     {
 
       memset(buf, 0, 13);
@@ -219,7 +219,7 @@ FlowEncoder::GetCountTableIdx(const FlowField& flow)
   std::vector<uint32_t> tableIdxs;
   
   char buf[13];
-  for(unsigned ith = 0; ith < NUM_COUNT_HASH; ++ith)
+  for(int ith = 0; ith < NUM_COUNT_HASH; ++ith)
     {
 
       memset(buf, 0, 13);
@@ -240,65 +240,6 @@ FlowEncoder::GetCountTableIdx(const FlowField& flow)
       tableIdxs.push_back(idx);
     }
   return tableIdxs;
-}
-
-
-FlowField
-FlowEncoder::FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol) const
-{
-  NS_LOG_INFO("Extract flow field");
-    
-  FlowField flow;
-  if(protocol == Ipv4L3Protocol::PROT_NUMBER)
-    {
-      Ipv4Header ipHd;
-      if( packet->PeekHeader(ipHd) )
-	{
-	  //NS_LOG_INFO("IP header detected");
-	  
-	  flow.ipv4srcip = ipHd.GetSource().Get();
-	  flow.ipv4dstip = ipHd.GetDestination().Get();
-	  flow.ipv4prot  = ipHd.GetProtocol ();
-	  packet->RemoveHeader (ipHd);
-
-	  if( flow.ipv4prot == TcpL4Protocol::PROT_NUMBER)
-	    {
-	      TcpHeader tcpHd;
-	      if( packet->PeekHeader(tcpHd) )
-		{
-		  //NS_LOG_INFO("TCP header detected");
-		  
-		  flow.srcport = tcpHd.GetSourcePort ();
-		  flow.dstport = tcpHd.GetDestinationPort ();
-		  packet->RemoveHeader(tcpHd);
-
-		}
-	    }
-	  else if( flow.ipv4prot == UdpL4Protocol::PROT_NUMBER )
-	    {
-	      UdpHeader udpHd;
-	      if( packet->PeekHeader(udpHd))
-		{
-		  //NS_LOG_INFO("UDP header detected");
-		 
-		  flow.srcport = udpHd.GetSourcePort ();
-		  flow.dstport = udpHd.GetDestinationPort ();
-		  packet->RemoveHeader(udpHd);
-		}
-	    }
-	  else
-	    {
-	      NS_LOG_INFO("layer 4 protocol can't extract: "<< unsigned(flow.ipv4prot));
-	    }
-	  
-	}
-    }
-  else
-    {
-      NS_LOG_INFO("packet is not an ip packet");
-    }
-
-  return flow;
 }
 
 

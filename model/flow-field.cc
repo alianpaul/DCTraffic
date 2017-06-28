@@ -1,15 +1,20 @@
+#include "flow-field.h"
 
 #include <iostream>
 
-#include "ns3/log.h"
 #include "ns3/udp-l4-protocol.h"
 #include "ns3/tcp-l4-protocol.h"
+#include "ns3/ipv4-l3-protocol.h"
+#include "ns3/tcp-header.h"
+#include "ns3/udp-header.h"
 #include "ns3/ipv4-address.h"
+#include "ns3/log.h"
 
-#include "flow-field.h"
 
 namespace ns3
 {
+
+NS_LOG_COMPONENT_DEFINE("FlowField");
 
 std::ostream&
 operator<<(std::ostream& os, const FlowField& flow)
@@ -45,6 +50,61 @@ bool operator==(FlowField const& f1, FlowField const& f2)
       && f1.ipv4prot  == f2.ipv4prot;
 }
 
+FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol)
+{
+  NS_LOG_INFO("Extract flow field");
+    
+  FlowField flow;
+  if(protocol == Ipv4L3Protocol::PROT_NUMBER)
+    {
+      Ipv4Header ipHd;
+      if( packet->PeekHeader(ipHd) )
+	{
+	  //NS_LOG_INFO("IP header detected");
+	  
+	  flow.ipv4srcip = ipHd.GetSource().Get();
+	  flow.ipv4dstip = ipHd.GetDestination().Get();
+	  flow.ipv4prot  = ipHd.GetProtocol ();
+	  packet->RemoveHeader (ipHd);
 
+	  if( flow.ipv4prot == TcpL4Protocol::PROT_NUMBER)
+	    {
+	      TcpHeader tcpHd;
+	      if( packet->PeekHeader(tcpHd) )
+		{
+		  //NS_LOG_INFO("TCP header detected");
+		  
+		  flow.srcport = tcpHd.GetSourcePort ();
+		  flow.dstport = tcpHd.GetDestinationPort ();
+		  packet->RemoveHeader(tcpHd);
+
+		}
+	    }
+	  else if( flow.ipv4prot == UdpL4Protocol::PROT_NUMBER )
+	    {
+	      UdpHeader udpHd;
+	      if( packet->PeekHeader(udpHd))
+		{
+		  //NS_LOG_INFO("UDP header detected");
+		 
+		  flow.srcport = udpHd.GetSourcePort ();
+		  flow.dstport = udpHd.GetDestinationPort ();
+		  packet->RemoveHeader(udpHd);
+		}
+	    }
+	  else
+	    {
+	      NS_LOG_INFO("layer 4 protocol can't extract: "<< unsigned(flow.ipv4prot));
+	    }
+	  
+	}
+    }
+  else
+    {
+      NS_LOG_INFO("packet is not an ip packet");
+    }
+
+  return flow;
+}
   
 }

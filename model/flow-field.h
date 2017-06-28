@@ -4,9 +4,13 @@
 #include <iostream>
 #include <functional>
 #include <boost/functional/hash.hpp>
+#include "ns3/ptr.h"
+
 
 namespace ns3
 {
+
+class Packet;
 
 struct FlowField
 {
@@ -39,7 +43,9 @@ struct FlowFieldBoostHash
 std::ostream& operator<<(std::ostream& os, const FlowField& flow);
 
 bool operator==(FlowField const& f1, FlowField const& f2);
-  
+
+FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol);
+
 }
 
 #endif
