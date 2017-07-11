@@ -36,9 +36,6 @@ private:
   ElephantFlowInfo_t   m_elephantFlowInfo; 
   //use this data structure to check wheather the flow is a mice/elephant, if the flow is an elephant, 
   //what is the drop rate.
-
- 
-
 };
 
 }

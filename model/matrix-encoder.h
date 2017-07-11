@@ -19,9 +19,10 @@ namespace ns3
 struct MtxFlowField : public FlowField
 {
   MtxFlowField(const FlowField& flow, std::vector<uint16_t> idxs)
-    : FlowField(flow), m_countTableIDXs(idxs)
+    : m_flow(flow), m_countTableIDXs(idxs)
   {}
   
+  FlowField              m_flow;
   std::vector<uint16_t>  m_countTableIDXs; //a flow map to MTX_COUNT_IDXS entries. 
 };
   

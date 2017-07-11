@@ -1,18 +1,20 @@
 #include "matrix-decoder.h"
-#include "matrix-encoder.h"
 #include "flow-field.h"
-#include "LSXR/lsqrDense.h"
-#include "LSXR/lsmrDense.h"
 
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 
 #include <fstream>
 
+
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("MatrixDecoder");
 NS_OBJECT_ENSURE_REGISTERED(MatrixDecoder);
+
+/*Call the cplex lib to solve the function, defined in solver/cplex-solver.cc*/
+int CplexSolve(Ptr<MatrixEncoder> target, MatrixEncoder::FlowInfo_t& flows);
   
 MatrixDecoder::MatrixDecoder()
 {}
@@ -32,16 +34,10 @@ MatrixDecoder::DecodeFlows()
 {
   NS_LOG_FUNCTION(Simulator::Now().GetSeconds());
 
-  //1. Output CounteTable and FlowVector to files
+  //1. Decode flows, if it is offline decode, just output the enooded data.
   for(size_t i = 0; i < m_encoders.size(); ++i)
     {
       MtxDecode(m_encoders[i]);
-    }
-
-  //1.1 Output real flows to files
-  for(size_t i = 0; i < m_encoders.size(); ++i)
-    {
-      OutputRealFlows(m_encoders[i]);
     }
   
   //2. Clear all the counters
@@ -64,6 +60,38 @@ MatrixDecoder::DecodeFlows()
 
 void
 MatrixDecoder::MtxDecode(Ptr<MatrixEncoder> target)
+{
+  if (IS_OFFLINE_DECODE) 
+    {
+      //Output CounteTable and FlowVector to files to decode offline
+      NS_LOG_LOGIC("Offline Decoding");
+      OutputFlowSet(target);
+    }
+  else 
+    {
+      //Use online cplex lib to decode
+      NS_LOG_LOGIC("Online Decoding");
+      MatrixEncoder::FlowInfo_t measuredFlows;
+      int status = CplexSolve(target, measuredFlows);
+      NS_ASSERT(!status); //assert that all block is successfully decoded
+      
+      OutputFlowData("measured",
+		     target->GetID(),
+		     Simulator::Now().GetSeconds(),
+		     measuredFlows);
+      
+    }  
+
+  //Output real flows to files
+  //OutputRealFlows(m_encoders[i]);
+  OutputFlowData("real",
+		 target->GetID(), 
+		 Simulator::Now().GetSeconds(), 
+		 target->GetRealFlowCounter());
+}
+
+void
+MatrixDecoder::OutputFlowSet(Ptr<MatrixEncoder> target)
 {
   NS_LOG_INFO("Decode at swtch " << target->GetID());
 
@@ -101,9 +129,10 @@ MatrixDecoder::MtxDecode(Ptr<MatrixEncoder> target)
 	  file << block.m_countTable[ci] << std::endl;
 	}
     }
-  
+
 }
 
+/** disabled, use OutputFlowData instead 
 void
 MatrixDecoder::OutputRealFlows(Ptr<MatrixEncoder> target)
 {
@@ -129,6 +158,29 @@ MatrixDecoder::OutputRealFlows(Ptr<MatrixEncoder> target)
     }
 
   file.close(); 
+}
+*/
+
+void 
+MatrixDecoder::OutputFlowData(std::string type, int swID, double time, const MatrixEncoder::FlowInfo_t& flows)
+{
+  NS_LOG_INFO("Output real flows " << swID);
+  
+  std::stringstream ss;
+  ss << "sw-" << swID << "-t-" << time <<"-"<< type <<"-flow.txt";
+  std::string filename; ss >> filename;
+
+  std::ofstream file(filename.c_str());
+  NS_ASSERT( file.is_open() );
+
+  for(MatrixEncoder::FlowInfo_t::const_iterator it = flows.begin();
+      it != flows.end();
+      ++it )
+    {
+      file << it->first << " " << it->second << std::endl;
+    }
+
+  file.close();
 }
   
 void

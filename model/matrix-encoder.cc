@@ -21,36 +21,20 @@ NS_LOG_COMPONENT_DEFINE("MatrixEncoder");
 NS_OBJECT_ENSURE_REGISTERED(MatrixEncoder);
 
 std::ostream&
-operator<<(std::ostream& os, const MtxFlowField& flow)
+operator<<(std::ostream& os, const MtxFlowField& mtxflow)
 {
-  Ipv4Address srcip (flow.ipv4srcip);
-  Ipv4Address dstip (flow.ipv4dstip);
-  std::string prot;
-  if (flow.ipv4prot == TcpL4Protocol::PROT_NUMBER)
-    prot = "TCP";
-  else if (flow.ipv4prot == UdpL4Protocol::PROT_NUMBER)
-    prot = "UDP";
-  else
-    {
-      prot = "Unknown L4 prot";
-      os << flow.ipv4prot;
-    }
-    
-  uint16_t srcport = flow.srcport;
-  uint16_t dstport = flow.dstport;
+  
+  os << mtxflow.m_flow << " ";
 
-  os << srcip << " " << dstip << " " << prot << " "
-     << srcport << " " << dstport << " ";
-
-  for(size_t i = 0; i < flow.m_countTableIDXs.size(); ++i)
+  for(size_t i = 0; i < mtxflow.m_countTableIDXs.size(); ++i)
     {
-      os << flow.m_countTableIDXs[i] << " ";
+      os << mtxflow.m_countTableIDXs[i] << " ";
     }
 
   return os;
 }
 
-  MatrixEncoder::MatrixEncoder() : m_packetReceived(0)
+MatrixEncoder::MatrixEncoder() : m_packetReceived(0)
 {
   m_blockSeed = std::rand() % 10;
   for(size_t i = 0; i < MTX_NUM_IDX; ++i)
@@ -80,7 +64,6 @@ MatrixEncoder::SetOFSwtch(Ptr<NetDevice> OFswtch, int id)
 
   m_id = id;
   OFswtch->SetPromiscReceiveCallback(MakeCallback(&MatrixEncoder::ReceiveFromOpenFlowSwtch, this));
-  
 }
 
 bool

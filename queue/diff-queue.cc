@@ -50,7 +50,7 @@ TypeId DiffQueue::GetTypeId ()
 void 
 DiffQueue::Init()
 {
-  //If the target max is bigger than the number of packets in the queue,
+  //If the target max is smaller than the number of packets in the queue,
   //ns-3 will abort.
   m_miceQueue->SetMaxPackets(m_miceMaxPackets);
   m_elephantQueue->SetMaxPackets(m_elephantMaxPackets);

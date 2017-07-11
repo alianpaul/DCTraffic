@@ -353,7 +353,7 @@ DCTopology::CreateMatrixRadar()
   for(int idSW = 0; idSW < m_numSw; ++idSW)
     {
       Ptr<MatrixEncoder> mtxEncoder = CreateObject<MatrixEncoder> ();
-      mtxEncoder->SetOFSwtch( m_OFSwtchDevices.Get(idSW), idSW + m_numHost);	
+      mtxEncoder->SetOFSwtch( m_OFSwtchDevices.Get(idSW), idSW + m_numHost); //id of the switch in topo	
       m_matrixRadar->AddEncoder(mtxEncoder);
     }
 }
@@ -420,7 +420,8 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
       queueFactory.SetTypeId ("ns3::DiffQueue");
       queueFactory.Set("MiceMaxPackets", UintegerValue(50));
       queueFactory.Set("ElephantMaxPackets", UintegerValue(100));
-      queueFactory.Set("MaxPackets", UintegerValue(MAX_INT));
+      //queueFactory.Set("MaxPackets", UintegerValue(MAX_INT));
+      queueFactory.Set("MaxPackets", UintegerValue(150));
 
       for(unsigned isw = 0; isw < m_switchPortDevices.size(); ++isw)
 	{
@@ -430,7 +431,7 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
 	  for(unsigned idevice = 0; idevice < swDevices.GetN(); ++idevice)
 	    {
 	      Ptr<CsmaNetDevice> device = DynamicCast<CsmaNetDevice> (swDevices.Get(idevice));
-	      Ptr<DiffQueue>     queue  = DynamicCast<DiffQueue> (queueFactory.Create<Queue>());
+	      Ptr<DiffQueue>     queue  = queueFactory.Create<DiffQueue>();
 	      queue->SetQueueConfig(queueConfig);
 	      queue->Init();
 	      device->SetQueue(queue);
