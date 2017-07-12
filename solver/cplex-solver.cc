@@ -5,13 +5,14 @@
 #include <ilconcert/iloenv.h>
 ILOSTLBEGIN
 
+#include "ns3/flow-field.h"
 #include "ns3/matrix-encoder.h"
 
 namespace ns3{
 
 int CplexSolveMtxBlock(const MtxBlock& block, std::vector<uint16_t>& flowsSizes);
 
-int CplexSolve(Ptr<MatrixEncoder> target, MatrixEncoder::FlowInfo_t& measuredFlows)
+int CplexSolve(Ptr<MatrixEncoder> target, FlowInfo_t& measuredFlows)
 {
   std::cout << "CplexSolve switch " << target->GetID() << std::endl;
   int status = 0;

@@ -17,7 +17,7 @@ class QueueConfig : public Object
 public:
   static TypeId GetTypeId (void);
   
-  QueueConfig();
+  QueueConfig(int swID);
   virtual ~QueueConfig();
 
 
@@ -32,7 +32,8 @@ public:
   ElephantFlowInfo_t& GetElephantFlowInfo() {return m_elephantFlowInfo;}
 
 private:
-  
+  int                  m_swID;
+  //Which sw the queueConfig is installed on.
   ElephantFlowInfo_t   m_elephantFlowInfo; 
   //use this data structure to check wheather the flow is a mice/elephant, if the flow is an elephant, 
   //what is the drop rate.

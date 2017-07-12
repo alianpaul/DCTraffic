@@ -63,6 +63,9 @@ private:
   /* @path represents a flow of packets(ip layer) 
    * Add this flow entry into the flow table of the switches
    * on the path.
+   *
+   * Attention, we also add the route table( dstip-port ) of each sw to QueueController
+   * QueueController use this information to decide which queue the flow packets is in. 
    */
   void SetFlowOnPath (const ns3::Graph::Path_t& path);
 

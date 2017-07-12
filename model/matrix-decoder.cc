@@ -14,7 +14,7 @@ NS_LOG_COMPONENT_DEFINE("MatrixDecoder");
 NS_OBJECT_ENSURE_REGISTERED(MatrixDecoder);
 
 /*Call the cplex lib to solve the function, defined in solver/cplex-solver.cc*/
-int CplexSolve(Ptr<MatrixEncoder> target, MatrixEncoder::FlowInfo_t& flows);
+int CplexSolve(Ptr<MatrixEncoder> target, FlowInfo_t& flows);
   
 MatrixDecoder::MatrixDecoder()
 {}
@@ -71,15 +71,26 @@ MatrixDecoder::MtxDecode(Ptr<MatrixEncoder> target)
     {
       //Use online cplex lib to decode
       NS_LOG_LOGIC("Online Decoding");
-      MatrixEncoder::FlowInfo_t measuredFlows;
+      FlowInfo_t measuredFlows;
       int status = CplexSolve(target, measuredFlows);
       NS_ASSERT(!status); //assert that all block is successfully decoded
+      
       
       OutputFlowData("measured",
 		     target->GetID(),
 		     Simulator::Now().GetSeconds(),
 		     measuredFlows);
-      
+
+      //Notify queue controller to update the queue config according to the measured flow.
+      if(!m_decodedCallback.IsNull())
+	{
+	  if(measuredFlows.size() > 0)
+	    m_decodedCallback(target->GetID(), measuredFlows);
+	}
+      else
+	{
+	  NS_LOG_INFO("Queue Controller Callback not set");
+	}
     }  
 
   //Output real flows to files
@@ -162,10 +173,9 @@ MatrixDecoder::OutputRealFlows(Ptr<MatrixEncoder> target)
 */
 
 void 
-MatrixDecoder::OutputFlowData(std::string type, int swID, double time, const MatrixEncoder::FlowInfo_t& flows)
+MatrixDecoder::OutputFlowData(std::string type, int swID, double time, const FlowInfo_t& flows)
 {
-  NS_LOG_INFO("Output real flows " << swID);
-  
+  NS_LOG_INFO("Output " << type << " flows " << " at sw " << swID); 
   std::stringstream ss;
   ss << "sw-" << swID << "-t-" << time <<"-"<< type <<"-flow.txt";
   std::string filename; ss >> filename;
@@ -173,7 +183,7 @@ MatrixDecoder::OutputFlowData(std::string type, int swID, double time, const Mat
   std::ofstream file(filename.c_str());
   NS_ASSERT( file.is_open() );
 
-  for(MatrixEncoder::FlowInfo_t::const_iterator it = flows.begin();
+  for(FlowInfo_t::const_iterator it = flows.begin();
       it != flows.end();
       ++it )
     {
@@ -189,7 +199,13 @@ MatrixDecoder::Init()
   
   NS_LOG_FUNCTION(this);
   Simulator::Schedule (Seconds(MTX_PERIOD), &MatrixDecoder::DecodeFlows, this);
-  
+}
+
+void
+MatrixDecoder::SetDecodedCallback(DecodedCallback_t cb)
+{
+  NS_LOG_INFO("Set decoded cb");
+  m_decodedCallback = cb;
 }
   
 }

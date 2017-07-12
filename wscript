@@ -217,6 +217,7 @@ def build(bld):
         obj.source.append('queue/mice-queue.cc')
         obj.source.append('queue/elephant-queue.cc')
         obj.source.append('queue/queue-config.cc')
+        obj.source.append('queue/queue-controller.cc')
         #cplex test
         obj.source.append('solver/cplex-solver.cc')
 
@@ -252,6 +253,7 @@ def build(bld):
         headers.source.append("queue/mice-queue.h")
         headers.source.append("queue/elephant-queue.h")
         headers.source.append("queue/queue-config.h")
+        headers.source.append("queue/queue-controller.h")
         
 
     if bld.env['ENABLE_EXAMPLES'] and bld.env['ENABLE_OPENFLOW']:

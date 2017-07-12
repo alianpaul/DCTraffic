@@ -18,6 +18,7 @@
 #include "ns3/csma-net-device.h"
 #include "ns3/queue-config.h"
 #include "ns3/diff-queue.h"
+#include "ns3/queue-controller.h"
 
 #include "openflow-switch-net-device.h"
 #include "flow-encoder.h"
@@ -29,10 +30,9 @@
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("DCTopology");
-
 NS_OBJECT_ENSURE_REGISTERED(DCTopology);
 
-const static int MAX_INT = std::numeric_limits<int>::max();
+//const static int MAX_INT = std::numeric_limits<int>::max();
 
 TypeId
 DCTopology::GetTypeId(void)
@@ -198,7 +198,6 @@ DCTopology::GetOFSwtch(int SWID) const
 {
   SWID -= m_numHost;
   Ptr<OpenFlowSwitchNetDevice> sw = DynamicCast<OpenFlowSwitchNetDevice, NetDevice> (m_OFSwtchDevices.Get(SWID));
-  
   return sw; 
 }
 
@@ -207,6 +206,12 @@ DCTopology::GetSWNode(int SWID) const
 {
   SWID -= m_numHost;
   return m_switchNodes.Get(SWID);
+}
+
+void
+DCTopology::AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPort)
+{
+  m_queueController->AddRouteTableEntry(swID, ipDstAddr, swOutPort);
 }
 
 
@@ -415,6 +420,11 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
     }
   else if(queueType == DIFF_QUEUE)
     {
+
+      //Initialize the queue controller
+      m_queueController = Create<QueueController>(m_numHost, m_numSw);
+      
+      //Initialize the queues, register all queues to the queue controller, and install the queue to the netdevice
       NS_LOG_INFO("Queue Type: DiffQueue");
       ObjectFactory queueFactory;
       queueFactory.SetTypeId ("ns3::DiffQueue");
@@ -426,18 +436,29 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
       for(unsigned isw = 0; isw < m_switchPortDevices.size(); ++isw)
 	{
 	  NetDeviceContainer& swDevices   = m_switchPortDevices[isw];
-	  Ptr<QueueConfig>    queueConfig = Create<QueueConfig>();   //1 queue config per switch
+	  Ptr<QueueConfig>    queueConfig = Create<QueueConfig>(isw + m_numHost);   //1 queue config per switch
+
+	  m_queueController->SetSWDiffQueueNum( isw + m_numHost, swDevices.GetN());  //the swID = isw + m_numHost
+	  m_queueController->RegisterQueueConfig( isw + m_numHost, queueConfig);
 
 	  for(unsigned idevice = 0; idevice < swDevices.GetN(); ++idevice)
 	    {
-	      Ptr<CsmaNetDevice> device = DynamicCast<CsmaNetDevice> (swDevices.Get(idevice));
-	      Ptr<DiffQueue>     queue  = queueFactory.Create<DiffQueue>();
-	      queue->SetQueueConfig(queueConfig);
-	      queue->Init();
-	      device->SetQueue(queue);
-	      
+	      //install a diff queue on the net device
+	      Ptr<CsmaNetDevice> device     = DynamicCast<CsmaNetDevice> (swDevices.Get(idevice)); 
+	      Ptr<DiffQueue>     diffQueue  = queueFactory.Create<DiffQueue>();
+	      diffQueue->SetQueueConfig(queueConfig); //each diff queue has a ref to the according queueconfig
+	      diffQueue->Init();
+	      device->SetQueue(diffQueue);
+
+	      //register the diff queue to the queue controller
+	      int idQueue = device->GetIfIndex(); //device id == port id == queue id
+	      m_queueController->RegisterDiffQueue( isw + m_numHost, idQueue, diffQueue);
 	    }
 	}
+      
+      //Set the matrix decoder call back
+      m_matrixRadar->SetDecodedCallback(MakeCallback(&QueueController::ReceiveDecodedFlow, m_queueController));
+
     }  
 }
   

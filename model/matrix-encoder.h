@@ -16,7 +16,7 @@
 namespace ns3
 {
 
-struct MtxFlowField : public FlowField
+struct MtxFlowField
 {
   MtxFlowField(const FlowField& flow, std::vector<uint16_t> idxs)
     : m_flow(flow), m_countTableIDXs(idxs)
@@ -38,8 +38,6 @@ struct MtxBlock
 class MatrixEncoder : public Object
 {
 public:
-
-  typedef boost::unordered_map<FlowField, uint16_t, FlowFieldBoostHash> FlowInfo_t;
 
   MatrixEncoder();
   virtual ~MatrixEncoder();
@@ -83,13 +81,12 @@ private:
   uint16_t              GetBlockIdx(const FlowField& flow);
   std::vector<uint16_t> GetCountTableIdx(const FlowField& flow);
   
-  typedef std::bitset<MTX_FLOW_FILTER_SIZE> FlowFilter_t;
-  
   int                       m_id;         //id of the switch node
   unsigned                  m_blockSeed;  //seed to choose a group
   std::vector<unsigned>     m_idxSeeds;   //seed to choose idx in a group
 
   std::vector<MtxBlock>     m_mtxBlocks;  //mtx blocks, we have MTX_COUNT_SUBTABLEs
+  typedef std::bitset<MTX_FLOW_FILTER_SIZE> FlowFilter_t;
   FlowFilter_t              m_mtxFlowFilter;
   FlowInfo_t                m_realFlowCounter;
   uint64_t                  m_packetReceived;

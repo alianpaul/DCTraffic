@@ -45,6 +45,7 @@ namespace ofi
   class EasyController;
 }
 class OpenFlowSwitchNetDevice;
+class QueueController;
   
 class DCTopology : public Object {
   
@@ -79,6 +80,9 @@ public:
   int                          GetHostID  (uint32_t ipv4Addr) const; 
   Ptr<OpenFlowSwitchNetDevice> GetOFSwtch (int SWID) const;
   Ptr<Node>                    GetSWNode  (int SWID) const;
+
+  //Add the route table entry to the QueueController
+  void                         AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPort);
 
 private:
   DCTopology(const DCTopology&);
@@ -133,6 +137,7 @@ private:
   void SetIPAddrAndArp ();
 
   /* Set the queue used by the netdevice. DropTail or DiffQueue
+   * Initialize all queues and queue controller, and register the queues to the queue controller
    */
   void SetSWNetdeviceQueue (QueueMode queueType);
     
@@ -152,6 +157,8 @@ private:
   Ptr<ofi::EasyController>        m_easyController;
 
   Graph                           m_graph;             //Store All path info
+
+  Ptr<QueueController>            m_queueController;   
 };
 
   

@@ -13,13 +13,12 @@ TypeId QueueConfig::GetTypeId()
   static TypeId tid = TypeId("ns3::QueueConfig")
     .SetParent<Object>()
     .SetGroupName("Openflow")
-    .AddConstructor<QueueConfig> ()
-    ;
+  ;
     
   return tid;
 }
 
-QueueConfig::QueueConfig()
+QueueConfig::QueueConfig(int swID) : m_swID(swID)
 {}
 
 QueueConfig::~QueueConfig()

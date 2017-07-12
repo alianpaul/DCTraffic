@@ -4,6 +4,7 @@
 #include <iostream>
 #include <functional>
 #include <boost/functional/hash.hpp>
+#include <boost/unordered_map.hpp>
 #include "ns3/ptr.h"
 
 
@@ -39,6 +40,8 @@ struct FlowFieldBoostHash
     return seed;
   }
 };
+
+typedef boost::unordered_map<FlowField, uint16_t, FlowFieldBoostHash> FlowInfo_t; //Store the flow-size
 
 std::ostream& operator<<(std::ostream& os, const FlowField& flow);
 
