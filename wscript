@@ -218,8 +218,8 @@ def build(bld):
         obj.source.append('queue/elephant-queue.cc')
         obj.source.append('queue/queue-config.cc')
         obj.source.append('queue/queue-controller.cc')
-        #cplex test
-        obj.source.append('solver/cplex-solver.cc')
+        #cplex
+        obj.source.append('solver/cplex-solve.cc')
 
         obj.env.append_value('DEFINES', 'NS3_OPENFLOW')
         obj_test.source.append('test/openflow-switch-test-suite.cc')

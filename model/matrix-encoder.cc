@@ -21,10 +21,10 @@ NS_LOG_COMPONENT_DEFINE("MatrixEncoder");
 NS_OBJECT_ENSURE_REGISTERED(MatrixEncoder);
 
 std::ostream&
-operator<<(std::ostream& os, const MtxFlowField& mtxflow)
+operator<<(std::ostream& os, const MtxFlow& mtxflow)
 {
   
-  os << mtxflow.m_flow << " ";
+  os << mtxflow.m_flow << " idx ";
 
   for(size_t i = 0; i < mtxflow.m_countTableIDXs.size(); ++i)
     {
@@ -34,8 +34,10 @@ operator<<(std::ostream& os, const MtxFlowField& mtxflow)
   return os;
 }
 
+
 MatrixEncoder::MatrixEncoder() : m_packetReceived(0)
 {
+  //initialize the hash seeds
   m_blockSeed = std::rand() % 10;
   for(size_t i = 0; i < MTX_NUM_IDX; ++i)
     {
@@ -47,10 +49,11 @@ MatrixEncoder::MatrixEncoder() : m_packetReceived(0)
       m_idxSeeds.push_back(seed);
     }
 
+  //intialize the blocks
   m_mtxBlocks.resize(MTX_NUM_BLOCK, MtxBlock());
   for(size_t i = 0; i < MTX_NUM_BLOCK; ++i)
     {
-      m_mtxBlocks[i].m_countTable.resize(MTX_COUNT_TABLE_SIZE_IN_BLOCK, 0);
+      m_mtxBlocks[i].m_countTable.resize(MTX_COUNT_TABLE_SIZE_IN_BLOCK);
     }
 }
   
@@ -61,7 +64,6 @@ void
 MatrixEncoder::SetOFSwtch(Ptr<NetDevice> OFswtch, int id)
 {
   NS_LOG_FUNCTION(this);
-
   m_id = id;
   OFswtch->SetPromiscReceiveCallback(MakeCallback(&MatrixEncoder::ReceiveFromOpenFlowSwtch, this));
 }
@@ -76,21 +78,22 @@ MatrixEncoder::ReceiveFromOpenFlowSwtch(Ptr<NetDevice> ofswtch,
   NS_LOG_FUNCTION("MtxEncoder ID " << m_id << " receive\n");
   Ptr<Packet> packet    = constPacket->Copy();
   FlowField   flow      = FlowFieldFromPacket (packet, protocol);
+  uint32_t    byte      = constPacket->GetSize();
   
   bool isNew                           = UpdateFlowFilter(flow);
   uint16_t blockIdx                    = GetBlockIdx(flow);
   std::vector<uint16_t> countTableIdxs = GetCountTableIdx(flow);
 
   //Update
-  UpdateMtxBlock (flow, isNew, blockIdx, countTableIdxs);
+  UpdateMtxBlock (flow, isNew, byte, blockIdx, countTableIdxs);
 
   //Update
-  UpdateRealFlowCounter (flow);
+  UpdateRealFlowCounter (flow, byte);
 
   ++m_packetReceived;
   if(m_packetReceived % 1000 == 0)
-    std::cout << "MtxEncoder "    << m_id << " received packets "
-	      << m_packetReceived << std::endl;
+    std::cout << "MtxEncoder "    << m_id 
+	      << " received packets " << m_packetReceived << std::endl;
   
   return true;
 }
@@ -101,10 +104,10 @@ MatrixEncoder::Clear()
   NS_LOG_INFO("MtxEncoder ID " << m_id << " reset");
 
   m_mtxBlocks.clear();
-  m_mtxBlocks.resize(MTX_NUM_BLOCK, MtxBlock());
+  m_mtxBlocks.resize(MTX_NUM_BLOCK);
   for(size_t i = 0; i < MTX_NUM_BLOCK; ++i)
     {
-      m_mtxBlocks[i].m_countTable.resize(MTX_COUNT_TABLE_SIZE_IN_BLOCK, 0);
+      m_mtxBlocks[i].m_countTable.resize(MTX_COUNT_TABLE_SIZE_IN_BLOCK);
     }
 
   m_mtxFlowFilter.reset();
@@ -113,38 +116,46 @@ MatrixEncoder::Clear()
 }
 
 void
-MatrixEncoder::UpdateMtxBlock(const FlowField& flow, bool isNew,
+MatrixEncoder::UpdateMtxBlock(const FlowField& flow, bool isNew, uint32_t byte,
 			      uint16_t blockIdx,
 			      std::vector<uint16_t> countTableIdxs)
 {
-
+  NS_LOG_FUNCTION(this);
   NS_ASSERT(blockIdx < MTX_NUM_BLOCK);
   MtxBlock& mtxBlock = m_mtxBlocks[blockIdx];
   
+  //Update flow vector
   if(isNew)
     {
       //NS_LOG_INFO("New flow" << flow);
-      mtxBlock.m_flowTable.push_back( MtxFlowField(flow, countTableIdxs) );
+      mtxBlock.m_flowTable.push_back( MtxFlow(flow, countTableIdxs) );
     }
 
+  //Update count table
   for(size_t i = 0; i < countTableIdxs.size(); ++i)
     {
-      ++ mtxBlock.m_countTable[ countTableIdxs[i] ];
+      PckByteFlowCnt& field = mtxBlock.m_countTable[ countTableIdxs[i] ];
+      field.m_packetCnt += 1;
+      field.m_byteCnt   += byte;
+      if(isNew) field.m_flowCnt += 1;
     }
 }
 
 void
-MatrixEncoder::UpdateRealFlowCounter(const FlowField& flow)
+MatrixEncoder::UpdateRealFlowCounter(const FlowField& flow, uint32_t byte)
 {
-  FlowInfo_t::iterator itFlow;
+  /*We use the simplest way to check if the flow is new, we are NOT using flowfilter to check if 
+   *the flow is new(because it might be wrong)
+   */
+  NS_LOG_FUNCTION(this);
+  FlowInfoHashMap_t<PckByteCnt>::iterator itFlow;
   if( (itFlow = m_realFlowCounter.find(flow)) == m_realFlowCounter.end() )
     {
-      m_realFlowCounter[flow] = 1;
+      m_realFlowCounter[flow] = PckByteCnt();
     }
-  else
-    {
-      itFlow->second += 1;
-    } 
+
+  m_realFlowCounter[flow].m_packetCnt += 1;
+  m_realFlowCounter[flow].m_byteCnt   += byte;
 }
 
 bool
@@ -154,7 +165,6 @@ MatrixEncoder::UpdateFlowFilter(const FlowField& flow)
   std::vector<uint32_t> filterIdxs = GetFlowFilterIdx(flow);
 
   bool isNew = false;
-
   for(unsigned ith = 0; ith < filterIdxs.size(); ++ith)
     {
       if( !m_mtxFlowFilter[filterIdxs[ith]] )
@@ -164,7 +174,6 @@ MatrixEncoder::UpdateFlowFilter(const FlowField& flow)
 	  isNew = true;
 	}
     }
-  
   return isNew;
 }
 

@@ -40,6 +40,19 @@ operator<<(std::ostream& os, const FlowField& flow)
 
   return os;
 }
+
+std::ostream& 
+operator<<(std::ostream& os, const PckByteFlowCnt& pbf)
+{
+  os << "PckCnt " << pbf.m_packetCnt << " ByteCnt " << pbf.m_byteCnt << " FlowCnt " << pbf.m_flowCnt;
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const PckByteCnt& pb)
+{
+  os << "PckCnt " << pb.m_packetCnt << " ByteCnt " << pb.m_byteCnt;
+  return os;
+}
   
 bool operator==(FlowField const& f1, FlowField const& f2)
 {
@@ -57,10 +70,11 @@ FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol)
   FlowField flow;
   if(protocol == Ipv4L3Protocol::PROT_NUMBER)
     {
+      
       Ipv4Header ipHd;
       if( packet->PeekHeader(ipHd) )
 	{
-	  //NS_LOG_INFO("IP header detected");
+	  NS_LOG_INFO("IP header detected");
 	  
 	  flow.ipv4srcip = ipHd.GetSource().Get();
 	  flow.ipv4dstip = ipHd.GetDestination().Get();
@@ -72,7 +86,7 @@ FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol)
 	      TcpHeader tcpHd;
 	      if( packet->PeekHeader(tcpHd) )
 		{
-		  //NS_LOG_INFO("TCP header detected");
+		  NS_LOG_INFO("TCP header detected");
 		  
 		  flow.srcport = tcpHd.GetSourcePort ();
 		  flow.dstport = tcpHd.GetDestinationPort ();
@@ -85,7 +99,7 @@ FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol)
 	      UdpHeader udpHd;
 	      if( packet->PeekHeader(udpHd))
 		{
-		  //NS_LOG_INFO("UDP header detected");
+		  NS_LOG_INFO("UDP header detected");
 		 
 		  flow.srcport = udpHd.GetSourcePort ();
 		  flow.dstport = udpHd.GetDestinationPort ();
@@ -98,12 +112,18 @@ FlowField FlowFieldFromPacket(Ptr<Packet> packet, uint16_t protocol)
 	    }
 	  
 	}
+      else 
+	{
+	  NS_LOG_INFO("Peek failed, remove mac layer header first");
+	  exit(0);
+	}
     }
   else
     {
       NS_LOG_INFO("packet is not an ip packet");
     }
 
+  NS_LOG_INFO("Extract Result: " << flow);
   return flow;
 }
   

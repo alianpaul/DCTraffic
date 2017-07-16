@@ -111,7 +111,7 @@ EasyController::SetFlowOnPath(const Graph::Path_t& path)
 		  << " to " << ipDstAddr << "|" << macDstAddr
 		  << " in_port: " << swInPort << " out_port: " << swOutPort);
       
-      //Add the route table entry to the QueueController
+      //Add the route table entry to the QueueController, if no queuecontroller, nothing will happen
       m_topo->AddRouteTableEntry(swID, ipDstAddr, swOutPort);
     }
 }

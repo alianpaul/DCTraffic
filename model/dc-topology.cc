@@ -211,7 +211,12 @@ DCTopology::GetSWNode(int SWID) const
 void
 DCTopology::AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPort)
 {
-  m_queueController->AddRouteTableEntry(swID, ipDstAddr, swOutPort);
+  if(m_queueController)
+    m_queueController->AddRouteTableEntry(swID, ipDstAddr, swOutPort);
+  else 
+    {
+      NS_LOG_INFO("No queueController installed, no need to add route table");
+    }
 }
 
 
@@ -458,7 +463,6 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
       
       //Set the matrix decoder call back
       m_matrixRadar->SetDecodedCallback(MakeCallback(&QueueController::ReceiveDecodedFlow, m_queueController));
-
     }  
 }
   

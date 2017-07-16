@@ -5,9 +5,10 @@
 #include <map>
 #include <vector>
 #include <utility>
+#include <iosfwd>
 
 #include "ns3/object.h"
-#include "ns3/flow-field.h"  //Can't forward declare a typedef FlowInfo_t, so must include
+#include "ns3/flow-field.h"  
 
 namespace ns3 {
 
@@ -15,9 +16,26 @@ class QueueConfig;
 class Ipv4Address;
 class DiffQueue;
 
+struct FlowStat  
+{
+  /*TODO: may compute other statistics*/
+  FlowStat() : m_elephantCnt(0), m_miceCnt(0),
+	       m_elephantPckTotalCnt(0), m_elephantByteTotalCnt(0),
+	       m_micePckTotalCnt(0), m_miceByteTotalCnt(0)
+  {}
+  
+  FlowInfoVec_t<PckByteCnt> m_sortedFlowPckByteInfo;
+  uint32_t m_elephantCnt;  //elephant flows
+  uint32_t m_miceCnt;      //mice flows
+  uint64_t m_elephantPckTotalCnt;
+  uint64_t m_elephantByteTotalCnt;
+  uint64_t m_micePckTotalCnt;
+  uint64_t m_miceByteTotalCnt;
+};
+std::ostream& operator<<(std::ostream& os, const FlowStat& stat);
+
 class QueueController : public Object
 {
-
 public:
   static TypeId GetTypeId (void);
 
@@ -35,13 +53,20 @@ public:
   
   void AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPort);
 
-  void UpdateQueueConfig(int swID,  const std::vector<std::pair<FlowField, uint16_t> >& elephantFlowInfoVec);
-
-  /* Called by matrix decoder(through call back)
+  /* Callback function call by matrix decoder
    */
-  void ReceiveDecodedFlow(int swID, const FlowInfo_t& flows);
-
+  void ReceiveDecodedFlow(int swID, const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo);
+  
 private:
+  /* Compute flow statistics at switch.
+   */
+  void ComputeFlowStatistics(int swID, const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo, FlowStat& stat);
+
+  /* Use computed flow statistics to config the queueConfig and diffqueues 
+   * on the specified switch.
+   */
+  void ConfigQueuesOnSwtch(int swID, const FlowStat& stat);
+
   typedef std::pair<Ipv4Address, int>  RouteEntry_t;
   typedef std::vector<RouteEntry_t>    RouteTable_t;
 

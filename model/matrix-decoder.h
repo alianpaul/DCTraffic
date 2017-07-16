@@ -2,27 +2,26 @@
 #define MATRIX_DECODER_H
 
 #include "ns3/object.h"
-#include "matrix-encoder.h"
 #include "flow-field.h"
 #include <string>
 
 namespace ns3 {
 
 class QueueController;  
+class MatrixEncoder;
 
 class MatrixDecoder : public Object
 {
   
 public:
 
-  /*
-  */
-  typedef Callback<void, int, const FlowInfo_t&> DecodedCallback_t;
+  typedef Callback<void, int, const FlowInfoVec_t<PckByteCnt>& > DecodedCallback_t;
 
   MatrixDecoder();
   virtual ~MatrixDecoder();
 
   void AddEncoder (Ptr<MatrixEncoder> mtxEncoder);
+
   void DecodeFlows ();
   
   void Init ();
@@ -31,18 +30,26 @@ public:
  
 
 private:
+
   void MtxDecode(Ptr<MatrixEncoder> target);
-
-  /*Output the flow data, real flows or measured online flows
+  /* Form and solve the flow equations,
+   * Use the cplex lib.
+   * return flowPckByteCnt
    */
-  void OutputFlowData(std::string type, int swID, double time, const FlowInfo_t& flows);
-  
-  /*Not defined, use OutputFlowData instead*/
-  void OutputRealFlows(Ptr<MatrixEncoder> target);
+  void DecodeFlowInfoAt(Ptr<MatrixEncoder> target, FlowInfoVec_t<PckByteCnt>& flowPckByteInfo);
 
-  /*Output the flow vector and countTable
+  /*Output the online decoded flow data(pck cnt and byte cnt)
+   */
+  void OutputDecodedFlows(int swID, const FlowInfoVec_t<PckByteCnt>& flows);
+  
+  /*Output real flows for checking
+   */
+  void OutputRealFlows(Ptr<MatrixEncoder> target);
+  
+  /*Output the flow vector and countTable for offline decoding
    */
   void OutputFlowSet(Ptr<MatrixEncoder> target);
+
 
 private:
   DecodedCallback_t                 m_decodedCallback; 

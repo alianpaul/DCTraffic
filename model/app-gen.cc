@@ -302,7 +302,7 @@ AppGen::GenUDPFlow (int src, int dst, uint16_t port, uint32_t maxBytes,
   //client
   OnOffHelper onoff("ns3::UdpSocketFactory",
 			  Address(InetSocketAddress(serverAddr, port)));
-  onoff.SetAttribute("MaxBytes", UintegerValue(maxBytes));
+  //onoff.SetAttribute("MaxBytes", UintegerValue(maxBytes));
   //onoff.SetAttribute("PacketSize", UintegerValue(1024));
   //onoff.SetAttribute("DataRate",DataRateValue(DataRate("1000kb/s")));
   onoff.SetConstantRate(DataRate("1000kb/s"), 1024);

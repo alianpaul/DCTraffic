@@ -5,6 +5,7 @@
 #include "queue-config.h"
 #include "ns3/log.h"
 #include "ns3/ipv4-l3-protocol.h"
+#include "ns3/ethernet-header.h"
 
 namespace ns3
 {
@@ -37,7 +38,7 @@ TypeId DiffQueue::GetTypeId ()
 		  MakeUintegerChecker<uint16_t> ())
     .AddAttribute("TotalWeight",
 		  "The total queue weight of mice and elephant",
-		  UintegerValue(1),
+		  UintegerValue(2),
 		  MakeUintegerAccessor (&DiffQueue::SetTotalWeight,
 					&DiffQueue::GetTotalWeight),
 		  MakeUintegerChecker<uint16_t> ())
@@ -70,7 +71,6 @@ DiffQueue::~DiffQueue()
 void 
 DiffQueue::SetMiceMaxPackets(uint32_t maxPackets)
 {
-  NS_LOG_FUNCTION(this << maxPackets);
   m_miceMaxPackets = maxPackets;
 }
 
@@ -83,7 +83,6 @@ DiffQueue::GetMiceMaxPackets() const
 void
 DiffQueue::SetElephantMaxPackets(uint32_t maxPackets)
 { 
-  NS_LOG_FUNCTION(this << maxPackets);
   m_elephantMaxPackets = maxPackets;
 }
 
@@ -126,21 +125,26 @@ DiffQueue::GetTotalWeight() const
 bool 
 DiffQueue::DoEnqueue(Ptr<QueueItem> item)
 {
-  Ptr<Packet> packet = item->GetPacket();
+  NS_LOG_INFO("Do Enqueue a packet");
+  Ptr<Packet> packet = item->GetPacket()->Copy(); //dont change original packet
+  /* Remove Ethernet header first, other wise the FlowFieldFromPacket will not work
+   */
+  EthernetHeader header(false);
+  packet->RemoveHeader(header);
+  
   FlowField   flow   = FlowFieldFromPacket(packet, Ipv4L3Protocol::PROT_NUMBER); 
   //Attention:
   //FlowFieldFromPacket was originally used by FlowEncoder::ReceiveFromOpenFlowSwtch callback, the
   //the protocol parameter was filled by this callback. But here we manually set the protocol argument to IPv4
-  QueueConfig::ElephantFlowInfo_t& elephantFlowInfo = m_queueConfig->GetElephantFlowInfo();
-  QueueConfig::ElephantFlowInfo_t::const_iterator it = elephantFlowInfo.find(flow);
-  if(it == elephantFlowInfo.cend())
+  bool isE = m_queueConfig->IsElephant(flow);
+  if(!isE)
     {
-      NS_LOG_INFO("mice flow packet");
+      NS_LOG_INFO("Enqueue Mice");
       return m_miceQueue->Enqueue(item);
     }
   else
     {
-      NS_LOG_INFO("elephant flow packet");
+      NS_LOG_INFO("Enqueue Elephant");
       return m_elephantQueue->Enqueue(item);
     }
   
@@ -150,7 +154,6 @@ Ptr<QueueItem>
 DiffQueue::DoDequeue()
 {
 
-  NS_LOG_FUNCTION(this);
   Ptr<QueueItem> item = 0;
   if(m_currentQueue < m_miceWeight)
     {

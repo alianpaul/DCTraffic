@@ -68,101 +68,97 @@ QueueController::AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPo
   rt.push_back( RouteEntry_t(ipDstAddr, swOutPort) );
 }
 
-/* Private helper function, extract elephant flow info from the flows
- * after sort the flowinfo, the first threshold * flow.size() flows is the big flow 
- */
-void ExtractElephantFlowInfo(const FlowInfo_t& flows,
-			     float             threshold,         
-			     std::vector<std::pair<FlowField, uint16_t> >& elephantFlowInfoVec, 
-			     uint64_t& elephantTotalInfo, 
-			     uint64_t& miceTotalInfo); 
-
-void 
-QueueController::ReceiveDecodedFlow(int swID, const FlowInfo_t& flowInfo)
+void
+QueueController::ReceiveDecodedFlow(int swID, const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo)
 {
-  NS_LOG_INFO("Receive sw " << swID << " decoded flow ");
-  /*TEST: print out the received flow
-  for(FlowInfo_t::const_iterator it = flows.begin(); it != flows.end(); ++it)
-    {
-      std::cout << it->first << " " << it->second << std::endl;
-    }
-  */
-
-  /*Compute flow statistics for queue config*/
-  std::vector<std::pair<FlowField, uint16_t> > elephantFlowInfoVec;
-  uint64_t elephantTotalInfo;
-  uint64_t miceTotalInfo;
-  ExtractElephantFlowInfo(flowInfo, 0.5, elephantFlowInfoVec, elephantTotalInfo, miceTotalInfo);
+  NS_LOG_INFO("SWID " << swID << " receive decoded flow info");
   
-  /*Test: output elepantflows
-  std::cout << "Elephant flows" << std::endl;
-  for(size_t i = 0; i < elephantFlowInfoVec.size(); ++i)
-    {
-      std::cout << elephantFlowInfoVec[i].first << " info " << elephantFlowInfoVec[i].second << std::endl; 
-    }
-  */
+  //Compute flow statistics
+  FlowStat swtchFlowStat;
+  ComputeFlowStatistics(swID, flowPckByteInfo, swtchFlowStat);
 
-  //TODO: 1 Calculate the queue information according to the extracted flow info.
-  
+  NS_LOG_INFO(swtchFlowStat);
 
-  //TODO: 2 Dispatch the elephant flow info 
-  UpdateQueueConfig(swID, elephantFlowInfoVec);
+  //Config the queue 
+  ConfigQueuesOnSwtch(swID, swtchFlowStat);
 }
 
 void
-QueueController::UpdateQueueConfig(int swID, 
-				   const std::vector<std::pair<FlowField, uint16_t> >& elephantFlowInfoVec)
+QueueController::ConfigQueuesOnSwtch(int swID, const FlowStat& stat)
 {
-  std::cout << "Update queue config at " << swID << std::endl;
-  for(size_t i = 0; i < elephantFlowInfoVec.size(); ++i)
+  NS_LOG_INFO("QController config qc at sw " << swID);
+
+  Ptr<QueueConfig> qc = m_swQueueConfig[swID - m_numHost];
+  if(stat.m_elephantCnt > 0)
     {
-      std::cout << elephantFlowInfoVec[i].first << " info " << elephantFlowInfoVec[i].second << std::endl; 
+      //update queue config' elephant flow set
+      const FlowInfoVec_t<PckByteCnt>& rflowinfo = stat.m_sortedFlowPckByteInfo;
+      qc->Clear();
+
+      for(size_t i = 0; i < stat.m_elephantCnt; ++i)
+	{
+	  qc->AddElephantFlowInfo( rflowinfo[i].first );
+	}
     }
+
 }
 
-struct FlowInfoGreater
-{
-  bool operator()(const std::pair<FlowField, uint16_t>& x1, const std::pair<FlowField, uint16_t>& x2)
-  {
-    return x1.second > x2.second;
-  }
-};
-
-void ExtractElephantFlowInfo(const FlowInfo_t& flowInfo,
-			     float             threshold,
-			     std::vector<std::pair<FlowField, uint16_t> >& elephantFlowInfoVec, 
-			     uint64_t& elephantTotalInfo, 
-			     uint64_t& miceTotalInfo)
+void
+QueueController::ComputeFlowStatistics(int swID, const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo, 
+				       FlowStat& stat)
 {
 
-  //Current elephantFlowInfo contains all flow
-  std::copy(flowInfo.begin(), flowInfo.end(), std::back_inserter(elephantFlowInfoVec));
+  uint64_t flowCnt = flowPckByteInfo.size();
+  stat.m_elephantCnt = flowCnt * 0.5; //TODO: now just for testing 
+  stat.m_miceCnt     = flowCnt - stat.m_elephantCnt;
 
-  std::sort(elephantFlowInfoVec.begin(), elephantFlowInfoVec.end(), FlowInfoGreater());
-
-  /*Test: print out the sorted flowinfo
-  for(size_t i = 0; i < elephantFlowInfoVec.size(); ++i)
-    {
-      std::cout << elephantFlowInfoVec[i].first << " info " << elephantFlowInfoVec[i].second << std::endl; 
-    }
-  */
+  stat.m_sortedFlowPckByteInfo = flowPckByteInfo;
+  FlowInfoVec_t<PckByteCnt>& rFlowPckByte =  stat.m_sortedFlowPckByteInfo;  
+  std::sort(rFlowPckByte.begin(), 
+	    rFlowPckByte.end(), 
+	    PckByteCntByteGreater());
   
-  uint64_t totalInfo = 0;
-  for(size_t i = 0; i < elephantFlowInfoVec.size(); ++i)
+  //Collect elephant flow statistic
+  for(size_t i = 0; i < stat.m_elephantCnt; ++i)
     {
-      totalInfo += elephantFlowInfoVec[i].second;
+      stat.m_elephantPckTotalCnt  += rFlowPckByte[i].second.m_packetCnt;
+      stat.m_elephantByteTotalCnt += rFlowPckByte[i].second.m_byteCnt;
     }
 
-  //Extract the elephantFlowInfo 
-  int elephantEnd = threshold * flowInfo.size(); 
-  elephantFlowInfoVec.resize(elephantEnd);
-  elephantTotalInfo = 0;
-  for (size_t i = 0; i < elephantFlowInfoVec.size(); ++i) 
+  //Collect mice flow statistic
+  for(size_t i = stat.m_elephantCnt; i < flowCnt; ++i)
     {
-      elephantTotalInfo += elephantFlowInfoVec[i].second;
+      stat.m_micePckTotalCnt  += rFlowPckByte[i].second.m_packetCnt;
+      stat.m_miceByteTotalCnt += rFlowPckByte[i].second.m_byteCnt;
     }
-  miceTotalInfo = totalInfo - elephantTotalInfo;
+  
+  
 }
+
+std::ostream&
+operator<<(std::ostream& os, const FlowStat& stat)
+{
+  os << "----------------Flow stat---------------\n";
+  os << "elephant flow cnt: " << stat.m_elephantCnt << "\n";
+  os << "elephant byte cnt: " << stat.m_elephantByteTotalCnt << "\n";
+  os << "elephant pck cnt:  " << stat.m_elephantPckTotalCnt << "\n";
+  os << "mice flow cnt:     " << stat.m_miceCnt << "\n";
+  os << "mice byte cnt:     " << stat.m_miceByteTotalCnt << "\n";
+  os << "mice pck cnt:      " << stat.m_micePckTotalCnt << "\n";
+  os << "E:\n";
+  for(size_t i = 0; i < stat.m_elephantCnt; ++i)
+    {
+      os << stat.m_sortedFlowPckByteInfo[i].first << " " << stat.m_sortedFlowPckByteInfo[i].second << "\n";
+    }
+  os << "M:\n";
+  for(size_t i = stat.m_elephantCnt; i < stat.m_miceCnt + stat.m_elephantCnt; ++i)
+    {
+      os << stat.m_sortedFlowPckByteInfo[i].first << " " << stat.m_sortedFlowPckByteInfo[i].second << "\n";
+    }
+  os << "------------------End-----------------";
+  return os;
+}
+
 
 
 }

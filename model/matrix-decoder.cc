@@ -1,20 +1,17 @@
 #include "matrix-decoder.h"
-#include "flow-field.h"
+#include "matrix-encoder.h"
 
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 
 #include <fstream>
-
+#include <utility>
 
 
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("MatrixDecoder");
 NS_OBJECT_ENSURE_REGISTERED(MatrixDecoder);
-
-/*Call the cplex lib to solve the function, defined in solver/cplex-solver.cc*/
-int CplexSolve(Ptr<MatrixEncoder> target, FlowInfo_t& flows);
   
 MatrixDecoder::MatrixDecoder()
 {}
@@ -58,6 +55,7 @@ MatrixDecoder::DecodeFlows()
     }
 }
 
+
 void
 MatrixDecoder::MtxDecode(Ptr<MatrixEncoder> target)
 {
@@ -69,36 +67,101 @@ MatrixDecoder::MtxDecode(Ptr<MatrixEncoder> target)
     }
   else 
     {
+      
       //Use online cplex lib to decode
       NS_LOG_LOGIC("Online Decoding");
-      FlowInfo_t measuredFlows;
-      int status = CplexSolve(target, measuredFlows);
-      NS_ASSERT(!status); //assert that all block is successfully decoded
-      
-      
-      OutputFlowData("measured",
-		     target->GetID(),
-		     Simulator::Now().GetSeconds(),
-		     measuredFlows);
 
+      FlowInfoVec_t<PckByteCnt> measuredFlowPckByteInfo; 
+      DecodeFlowInfoAt(target, measuredFlowPckByteInfo);
+      
+      OutputDecodedFlows(target->GetID(), measuredFlowPckByteInfo);      
       //Notify queue controller to update the queue config according to the measured flow.
       if(!m_decodedCallback.IsNull())
 	{
-	  if(measuredFlows.size() > 0)
-	    m_decodedCallback(target->GetID(), measuredFlows);
+	  if(measuredFlowPckByteInfo.size() > 0)
+	    m_decodedCallback(target->GetID(), measuredFlowPckByteInfo);
+	  else 
+	    {
+	      NS_LOG_INFO("No flow measured");
+	    }
 	}
       else
 	{
 	  NS_LOG_INFO("Queue Controller Callback not set");
 	}
+     
     }  
 
   //Output real flows to files
-  //OutputRealFlows(m_encoders[i]);
-  OutputFlowData("real",
-		 target->GetID(), 
-		 Simulator::Now().GetSeconds(), 
-		 target->GetRealFlowCounter());
+  OutputRealFlows(target);
+}
+
+/*Helper function to form the equations
+ */
+void FormEquations(const MtxBlock& block, 
+		   std::vector<std::vector<uint16_t> >& cntIdToFlowId,
+		   std::vector<uint32_t>& pckCnt,
+		   std::vector<uint32_t>& byteCnt);
+/*Helper function to solve the equations
+ *defined in solver/cplex-solve.cc
+ */
+void CplexSolveEquations(const std::vector<std::vector<uint16_t> >& cntIdToVarId,
+			 const std::vector<uint32_t>& cnt,
+			 std::vector<uint32_t>& var);
+void
+MatrixDecoder::DecodeFlowInfoAt(Ptr<MatrixEncoder> target, FlowInfoVec_t<PckByteCnt>& flowPckByteInfo)
+{
+  const std::vector<MtxBlock>& mtxBlocks = target->GetMtxBlocks();
+  //For each block, we form the equation and solve, this part can be parallelized 
+  for(size_t ib = 0; ib < MTX_NUM_BLOCK; ++ib)
+    {
+      const MtxBlock& block   = mtxBlocks[ib];
+      int             flowCnt = block.m_flowTable.size();  //varCnt
+      int             eqCnt   = block.m_countTable.size(); //Equations Cnt
+
+      std::vector<std::vector<uint16_t> > cntIdToFlowId(eqCnt, std::vector<uint16_t>());
+      std::vector<uint32_t>               pckCnt(eqCnt, 0);
+      std::vector<uint32_t>               byteCnt(eqCnt, 0);
+      FormEquations(block, cntIdToFlowId, pckCnt, byteCnt);
+
+      std::vector<uint32_t> pckSize(flowCnt, 0);   //flow pckSize
+      CplexSolveEquations(cntIdToFlowId, pckCnt, pckSize);
+      std::vector<uint32_t> byteSize(flowCnt, 0);  //flow byteSize
+      CplexSolveEquations(cntIdToFlowId, byteCnt, byteSize);
+
+      for(size_t iFlow = 0; iFlow < block.m_flowTable.size(); ++iFlow)
+	{
+	  const FlowField& flow = block.m_flowTable[iFlow].m_flow;
+	  PckByteCnt       pb(pckSize[iFlow], byteSize[iFlow]);
+	  flowPckByteInfo.push_back( std::make_pair(flow, pb) );
+	}
+    }
+}
+
+/*Helper function to form the equations
+ */
+void FormEquations(const MtxBlock& block, 
+		   std::vector<std::vector<uint16_t> >& cntIdToFlowId,
+		   std::vector<uint32_t>& pckCnt,
+		   std::vector<uint32_t>& byteCnt)
+{
+  //Loop through the flow vector to form cntIdToFlowId
+  for(size_t flowId = 0; flowId < block.m_flowTable.size(); ++flowId)
+    {
+      const MtxFlow& field = block.m_flowTable[flowId];
+      for(size_t iIdx = 0; iIdx < field.m_countTableIDXs.size(); ++iIdx)
+	{
+	  size_t cntId = field.m_countTableIDXs[iIdx];
+	  cntIdToFlowId[cntId].push_back(flowId);
+	}
+    }
+  
+  //Loop through the countTable to form pckCnt and byteCnt
+  for(size_t cntId = 0; cntId < block.m_countTable.size(); ++cntId)
+    {
+      pckCnt[cntId]  = block.m_countTable[cntId].m_packetCnt;
+      byteCnt[cntId] = block.m_countTable[cntId].m_byteCnt;
+    }
 }
 
 void
@@ -128,9 +191,8 @@ MatrixDecoder::OutputFlowSet(Ptr<MatrixEncoder> target)
       file << "flows " << block.m_flowTable.size() << std::endl;
       for(size_t fi = 0; fi < block.m_flowTable.size(); ++fi)
 	{
-	  const MtxFlowField& mtxflow = block.m_flowTable[fi];
 	  //NS_LOG_INFO(mtxflow);
-	  file << mtxflow << std::endl; 
+	  file << block.m_flowTable[fi] << std::endl; 
 	}
 
       //2.Output counter table
@@ -143,11 +205,11 @@ MatrixDecoder::OutputFlowSet(Ptr<MatrixEncoder> target)
 
 }
 
-/** disabled, use OutputFlowData instead 
+ 
 void
 MatrixDecoder::OutputRealFlows(Ptr<MatrixEncoder> target)
 {
-  NS_LOG_INFO("Output real flows " << target->GetID());
+  NS_LOG_INFO("Output real flows at sw " << target->GetID());
 
   NS_LOG_INFO("MtxEncoder " << target->GetID() << " Packets Receved "
 	      << target->GetTotalPacketsReceived());
@@ -160,8 +222,8 @@ MatrixDecoder::OutputRealFlows(Ptr<MatrixEncoder> target)
   std::ofstream file(filename.c_str());
   NS_ASSERT( file.is_open() );
   
-  const MatrixEncoder::FlowInfo_t& realFlows = target->GetRealFlowCounter();
-  for(MatrixEncoder::FlowInfo_t::const_iterator it = realFlows.begin();
+  const FlowInfoHashMap_t<PckByteCnt>& realFlows = target->GetRealFlowCounter();
+  for(FlowInfoHashMap_t<PckByteCnt>::const_iterator it = realFlows.begin();
       it != realFlows.end();
       ++it )
     {
@@ -170,26 +232,25 @@ MatrixDecoder::OutputRealFlows(Ptr<MatrixEncoder> target)
 
   file.close(); 
 }
-*/
+
 
 void 
-MatrixDecoder::OutputFlowData(std::string type, int swID, double time, const FlowInfo_t& flows)
+MatrixDecoder::OutputDecodedFlows(int swID, const FlowInfoVec_t<PckByteCnt>& flows)
 {
-  NS_LOG_INFO("Output " << type << " flows " << " at sw " << swID); 
+  NS_LOG_INFO("Output decoded flows " << " at sw " << swID); 
   std::stringstream ss;
-  ss << "sw-" << swID << "-t-" << time <<"-"<< type <<"-flow.txt";
+  ss << "sw-" << swID << "-t-" << Simulator::Now().GetSeconds() << "-measured-flow.txt";
   std::string filename; ss >> filename;
 
   std::ofstream file(filename.c_str());
   NS_ASSERT( file.is_open() );
 
-  for(FlowInfo_t::const_iterator it = flows.begin();
+  for(FlowInfoVec_t<PckByteCnt>::const_iterator it = flows.begin();
       it != flows.end();
       ++it )
     {
       file << it->first << " " << it->second << std::endl;
     }
-
   file.close();
 }
   

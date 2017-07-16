@@ -2,9 +2,9 @@
 #ifndef QUEUE_CONFIG_H
 #define QUEUE_CONFIG_H
 
-#include <boost/unordered_map.hpp>
 #include "ns3/object.h"
 #include "ns3/flow-field.h"
+#include <iostream>
 
 namespace ns3 {
 
@@ -20,23 +20,15 @@ public:
   QueueConfig(int swID);
   virtual ~QueueConfig();
 
+  void Clear();
 
-  struct ElephantFlowEntry
-  {
-    ElephantFlowEntry() : dropRate(0.0) {}
-    double dropRate; 
-  };
-  typedef boost::unordered_map<FlowField, ElephantFlowEntry, FlowFieldBoostHash> ElephantFlowInfo_t;
-
-
-  ElephantFlowInfo_t& GetElephantFlowInfo() {return m_elephantFlowInfo;}
+  void AddElephantFlowInfo(const FlowField& flow /*We may set each elephant flow's drop rate*/);
+  
+  bool IsElephant(const FlowField& flow /*we may get the drop rate*/);
 
 private:
-  int                  m_swID;
-  //Which sw the queueConfig is installed on.
-  ElephantFlowInfo_t   m_elephantFlowInfo; 
-  //use this data structure to check wheather the flow is a mice/elephant, if the flow is an elephant, 
-  //what is the drop rate.
+  int                       m_swID;           //Which sw the queueConfig is installed on.
+  FlowInfoHashMap_t<float>  m_elephantFlows;  
 };
 
 }
