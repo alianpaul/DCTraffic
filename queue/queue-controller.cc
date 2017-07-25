@@ -5,13 +5,11 @@
 #include "queue-controller.h"
 #include "ns3/ipv4-address.h"
 #include "ns3/log.h"
-#include "queue-config.h"
 
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("QueueController");
 NS_OBJECT_ENSURE_REGISTERED(QueueController);
-
 
 TypeId
 QueueController::GetTypeId(void)
@@ -28,7 +26,6 @@ QueueController::QueueController(int h, int sw) : m_numHost(h), m_numSw(sw)
   NS_LOG_FUNCTION(this<<"numHost" << m_numHost << "numSW" << m_numSw);
   m_swRouteTable.resize(sw);
   m_swDiffQueue.resize(sw);
-  m_swQueueConfig.resize(sw);
 }
 
 QueueController::~QueueController()
@@ -38,7 +35,7 @@ QueueController::~QueueController()
 void 
 QueueController::SetSWDiffQueueNum(int swID, int numDiffQ) 
 { 
-  NS_LOG_INFO("SWID " << swID << " DiffQNum " << numDiffQ << " Set");
+  //NS_LOG_INFO("SWID " << swID << " DiffQNum " << numDiffQ << " Set");
   int isw = swID - m_numHost; 
   m_swDiffQueue[isw].resize(numDiffQ, Ptr<DiffQueue>()); 
 };
@@ -46,25 +43,32 @@ QueueController::SetSWDiffQueueNum(int swID, int numDiffQ)
 void 
 QueueController::RegisterDiffQueue(int swID, int diffQID, Ptr<DiffQueue> diffQ)
 {
-  NS_LOG_INFO("SWID " << swID << " QID " << diffQID << " Registered");
+  //NS_LOG_INFO("SWID " << swID << " QID " << diffQID << " Registered");
   int isw = swID - m_numHost;
+  NS_ASSERT( !m_swDiffQueue[isw][diffQID] ); 
   m_swDiffQueue[isw][diffQID] = diffQ;
 }
 
-void
-QueueController::RegisterQueueConfig(int swID, Ptr<QueueConfig> queueConfig)
+ 
+bool IsIPPredicate(const Ipv4Address& ip, const QueueController::RouteEntry_t e)
 {
-  NS_LOG_INFO("SWID " << swID << " queueConfig set");
-  int isw = swID - m_numHost;
-  m_swQueueConfig[isw] = queueConfig;
+  return e.first == ip;
 }
 
 void
 QueueController::AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPort)
 {
-  NS_LOG_INFO("SWID " << swID <<" DstIP " <<ipDstAddr << " OutPort " <<swOutPort);
+  //NS_LOG_INFO("SWID " << swID <<" DstIP " <<ipDstAddr << " OutPort " <<swOutPort);
   int isw = swID - m_numHost; 
-  RouteTable_t& rt  = m_swRouteTable[isw]; 
+  RouteTable_t& rt  = m_swRouteTable[isw];
+  RouteTable_t::iterator it = std::find_if(rt.begin(), 
+					   rt.end(), 
+					   std::bind1st(std::ptr_fun(&IsIPPredicate), ipDstAddr));
+  if(it != rt.end())
+    {
+      NS_ASSERT(it->second == swOutPort);
+      return;
+    }
   rt.push_back( RouteEntry_t(ipDstAddr, swOutPort) );
 }
 
@@ -72,73 +76,133 @@ void
 QueueController::ReceiveDecodedFlow(int swID, const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo)
 {
   NS_LOG_INFO("SWID " << swID << " receive decoded flow info");
+
+  int swIdx = swID - m_numHost;
+
+  const RouteTable_t&                 routeTable = m_swRouteTable[swIdx];
+  const std::vector<Ptr<DiffQueue> >& diffQueues = m_swDiffQueue[swIdx];
+
+  std::vector<FlowStat> queuesFlowStat; //Flow Statistics for each queue
+  queuesFlowStat.resize(diffQueues.size());
+
+  ComputeFlowStatistics(flowPckByteInfo, routeTable, queuesFlowStat); //Compute flow statistics for each queue.
+
+  //Print out the route table to check out
+  NS_LOG_INFO("SW " << swID << " Route Table\n" << routeTable);
   
-  //Compute flow statistics
-  FlowStat swtchFlowStat;
-  ComputeFlowStatistics(swID, flowPckByteInfo, swtchFlowStat);
-
-  NS_LOG_INFO(swtchFlowStat);
-
-  //Config the queue 
-  ConfigQueuesOnSwtch(swID, swtchFlowStat);
+  ConfigQueuesOnSwtch(queuesFlowStat, diffQueues);  //configure each queue according to the flow statistics
+  
 }
 
 void
-QueueController::ConfigQueuesOnSwtch(int swID, const FlowStat& stat)
+QueueController::ConfigQueuesOnSwtch(const std::vector<FlowStat>& queuesFlowStat, 
+				     const std::vector<Ptr<DiffQueue> >& queues)
 {
-  NS_LOG_INFO("QController config qc at sw " << swID);
-
-  Ptr<QueueConfig> qc = m_swQueueConfig[swID - m_numHost];
-  if(stat.m_elephantCnt > 0)
+  
+  for(size_t i = 0; i < queues.size(); ++i)
     {
-      //update queue config' elephant flow set
-      const FlowInfoVec_t<PckByteCnt>& rflowinfo = stat.m_sortedFlowPckByteInfo;
-      qc->Clear();
+      const FlowStat& flowStat  = queuesFlowStat[i];    
+      Ptr<DiffQueue>  diffQueue = queues[i];
 
-      for(size_t i = 0; i < stat.m_elephantCnt; ++i)
+      //Set the ElephantFlowInfo of the diffQueue
+      diffQueue->ClearElephantFlowInfo();
+      for(size_t ie = 0; ie < flowStat.m_elephantCnt; ++ie)
 	{
-	  qc->AddElephantFlowInfo( rflowinfo[i].first );
+	  const FlowField&  eflow = flowStat.m_sortedFlowPckByteInfo[ie].first;
+	  //const PckByteCnt& ePB   = flowStat.m_sortedFlowPckByteInfo[ie].second;
+	  
+	  //TODO: Calculate the drop rate
+	  float droprate = 0.f;
+	  diffQueue->SetElephantFlowInfo( eflow, droprate );
 	}
-    }
 
+      //Set the elephant mice maxPackets of the diffQueue
+      uint64_t totalP = flowStat.m_micePckTotalCnt + flowStat.m_elephantPckTotalCnt;
+      float micePercent = (float) flowStat.m_micePckTotalCnt / (float) totalP;
+      //TODO:
+      float miceExpand  = 1.2;
+      micePercent *= miceExpand;
+
+      uint32_t queueTotalMaxPackets    = diffQueue->GetMaxPackets();
+      uint32_t queueMiceMaxPackets     = queueTotalMaxPackets * micePercent;
+      uint32_t queueElephantMaxPackets = queueTotalMaxPackets - queueMiceMaxPackets;
+
+      NS_ASSERT(queueMiceMaxPackets >= 0);
+      NS_ASSERT(queueElephantMaxPackets >= 0);
+
+      diffQueue->SetMiceMaxPackets( queueMiceMaxPackets );
+      diffQueue->SetElephantMaxPackets( queueElephantMaxPackets );
+
+      NS_LOG_INFO("Queue " << i << " FlowStat\n" << flowStat);       
+      NS_LOG_INFO("new mice: " << queueMiceMaxPackets);
+      NS_LOG_INFO("new elep: " << queueElephantMaxPackets);
+
+      
+    }
 }
 
+
 void
-QueueController::ComputeFlowStatistics(int swID, const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo, 
-				       FlowStat& stat)
+QueueController::ComputeFlowStatistics(const FlowInfoVec_t<PckByteCnt>& flowPckByteInfo, 
+				       const RouteTable_t& routeTable, 
+				       std::vector<FlowStat>& queuesFlowStat)
 {
 
-  uint64_t flowCnt = flowPckByteInfo.size();
-  stat.m_elephantCnt = flowCnt * 0.5; //TODO: now just for testing 
-  stat.m_miceCnt     = flowCnt - stat.m_elephantCnt;
-
-  stat.m_sortedFlowPckByteInfo = flowPckByteInfo;
-  FlowInfoVec_t<PckByteCnt>& rFlowPckByte =  stat.m_sortedFlowPckByteInfo;  
-  std::sort(rFlowPckByte.begin(), 
-	    rFlowPckByte.end(), 
-	    PckByteCntByteGreater());
-  
-  //Collect elephant flow statistic
-  for(size_t i = 0; i < stat.m_elephantCnt; ++i)
+  //Divide flows into different queues.
+  for(FlowInfoVec_t<PckByteCnt>::const_iterator it = flowPckByteInfo.begin();
+      it != flowPckByteInfo.end();
+      ++it)
     {
-      stat.m_elephantPckTotalCnt  += rFlowPckByte[i].second.m_packetCnt;
-      stat.m_elephantByteTotalCnt += rFlowPckByte[i].second.m_byteCnt;
+      const Ipv4Address& ipDst = Ipv4Address((it->first).ipv4dstip);
+
+      //Using the route table to find the according queue it belongs to.
+      size_t i = 0;
+      for(; i < routeTable.size(); ++i)
+	{
+	  if(routeTable[i].first == ipDst) break;
+	}
+      NS_ASSERT(i < routeTable.size()); //ensure we found an entry
+      int queueId = routeTable[i].second;
+
+      queuesFlowStat[queueId].m_sortedFlowPckByteInfo.push_back(*it);
     }
 
-  //Collect mice flow statistic
-  for(size_t i = stat.m_elephantCnt; i < flowCnt; ++i)
+  //Compute each queues flow statistics
+  for(size_t i = 0; i < queuesFlowStat.size(); ++i)
     {
-      stat.m_micePckTotalCnt  += rFlowPckByte[i].second.m_packetCnt;
-      stat.m_miceByteTotalCnt += rFlowPckByte[i].second.m_byteCnt;
+      FlowStat& flowStat = queuesFlowStat[i];
+      std::sort(flowStat.m_sortedFlowPckByteInfo.begin(),
+		flowStat.m_sortedFlowPckByteInfo.end(),
+		PckByteCntByteGreater());
+      
+      flowStat.m_totalFlowCnt = flowStat.m_sortedFlowPckByteInfo.size();
+      flowStat.m_elephantCnt  = flowStat.m_totalFlowCnt * 0.5; //TODO: How big is the threshold
+      flowStat.m_miceCnt      = flowStat.m_totalFlowCnt - flowStat.m_elephantCnt;
+
+      size_t i = 0;
+      for(; i < flowStat.m_elephantCnt; ++i)
+	{
+	  const PckByteCnt& pb = flowStat.m_sortedFlowPckByteInfo[i].second;
+	  flowStat.m_elephantPckTotalCnt  += pb.m_packetCnt;
+	  flowStat.m_elephantByteTotalCnt += pb.m_byteCnt; 
+	}
+      
+      for(; i < flowStat.m_totalFlowCnt; ++i)
+	{
+	  const PckByteCnt& pb = flowStat.m_sortedFlowPckByteInfo[i].second;
+	  flowStat.m_micePckTotalCnt  += pb.m_packetCnt;
+	  flowStat.m_miceByteTotalCnt += pb.m_byteCnt; 
+	}
+
     }
-  
-  
+
 }
 
 std::ostream&
 operator<<(std::ostream& os, const FlowStat& stat)
 {
   os << "----------------Flow stat---------------\n";
+  os << "total flow cnt:    " << stat.m_totalFlowCnt << "\n";
   os << "elephant flow cnt: " << stat.m_elephantCnt << "\n";
   os << "elephant byte cnt: " << stat.m_elephantByteTotalCnt << "\n";
   os << "elephant pck cnt:  " << stat.m_elephantPckTotalCnt << "\n";
@@ -155,11 +219,20 @@ operator<<(std::ostream& os, const FlowStat& stat)
     {
       os << stat.m_sortedFlowPckByteInfo[i].first << " " << stat.m_sortedFlowPckByteInfo[i].second << "\n";
     }
-  os << "------------------End-----------------";
+  os << "----------------Flow End-----------------";
   return os;
 }
 
-
+std::ostream& 
+operator<<(std::ostream& os, const QueueController::RouteTable_t& rt)
+{
+  for(size_t i = 0; i < rt.size(); ++i)
+    {
+      os << "Dst " << rt[i].first << " Port " << rt[i].second << "\n"; 
+    }
+  
+  return os;
+}
 
 }
 

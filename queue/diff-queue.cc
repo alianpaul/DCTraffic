@@ -1,8 +1,6 @@
 
 #include "diff-queue.h"
-#include "mice-queue.h"
-#include "elephant-queue.h"
-#include "queue-config.h"
+
 #include "ns3/log.h"
 #include "ns3/ipv4-l3-protocol.h"
 #include "ns3/ethernet-header.h"
@@ -48,104 +46,72 @@ TypeId DiffQueue::GetTypeId ()
   return tid;
 }
 
-void 
-DiffQueue::Init()
-{
-  //If the target max is smaller than the number of packets in the queue,
-  //ns-3 will abort.
-  m_miceQueue->SetMaxPackets(m_miceMaxPackets);
-  m_elephantQueue->SetMaxPackets(m_elephantMaxPackets);
-}
-
-DiffQueue::DiffQueue() : m_currentQueue(0)
+DiffQueue::DiffQueue() 
+  :m_miceNPcks(0), m_miceNBytes(0),
+   m_elephantNPcks(0), m_elephantNBytes(0),
+   m_currentQueue(0)
 {
    NS_LOG_FUNCTION(this);
-   m_miceQueue     = Create<MiceQueue>();
-   m_elephantQueue = Create<ElephantQueue>();
 }
 
 DiffQueue::~DiffQueue()
 {
 }
 
-void 
-DiffQueue::SetMiceMaxPackets(uint32_t maxPackets)
-{
-  m_miceMaxPackets = maxPackets;
-}
-
-uint32_t 
-DiffQueue::GetMiceMaxPackets() const
-{
-  return m_miceMaxPackets;
-}
-
-void
-DiffQueue::SetElephantMaxPackets(uint32_t maxPackets)
-{ 
-  m_elephantMaxPackets = maxPackets;
-}
-
-uint32_t
-DiffQueue::GetElephantMaxPackets() const
-{
-  return m_elephantMaxPackets;
-}
-
-void
-DiffQueue::SetQueueConfig(Ptr<QueueConfig> qc)
-{
-  m_queueConfig = qc;
-}
-
-void
-DiffQueue::SetMiceWeight(uint16_t miceW)
-{
-  m_miceWeight  = miceW;
-}
-
-uint16_t
-DiffQueue::GetMiceWeight() const
-{
-  return m_miceWeight;
-}
-
-void
-DiffQueue::SetTotalWeight(uint16_t totalW)
-{
-  m_totalWeight = totalW;
-}
-
-uint16_t
-DiffQueue::GetTotalWeight() const
-{
-  return m_totalWeight;
-}
-
 bool 
 DiffQueue::DoEnqueue(Ptr<QueueItem> item)
 {
-  NS_LOG_INFO("Do Enqueue a packet");
   Ptr<Packet> packet = item->GetPacket()->Copy(); //dont change original packet
   /* Remove Ethernet header first, other wise the FlowFieldFromPacket will not work
    */
   EthernetHeader header(false);
   packet->RemoveHeader(header);
-  
-  FlowField   flow   = FlowFieldFromPacket(packet, Ipv4L3Protocol::PROT_NUMBER); 
   //Attention:
   //FlowFieldFromPacket was originally used by FlowEncoder::ReceiveFromOpenFlowSwtch callback, the
   //the protocol parameter was filled by this callback. But here we manually set the protocol argument to IPv4
-  bool isE = m_queueConfig->IsElephant(flow);
-  if(!isE)
+  FlowField   flow   = FlowFieldFromPacket(packet, Ipv4L3Protocol::PROT_NUMBER);
+  NS_LOG_INFO("SW " << m_swID << " port " << m_portID  <<" receive a packet from flow: " << flow);
+
+  /*
+  NS_LOG_INFO("E flow:");
+  for(ElephantFlowInfo_t::const_iterator ie = m_elephantFlowInfo.begin();
+      ie != m_elephantFlowInfo.end();
+      ++ie)
     {
-      NS_LOG_INFO("Enqueue Mice");
-      return m_miceQueue->Enqueue(item);
+      NS_LOG_INFO(ie->first << " " << ie->second);
+    }
+  */
+
+  ElephantFlowInfo_t::const_iterator ie = m_elephantFlowInfo.find(flow);
+  if(ie == m_elephantFlowInfo.end())
+    {
+      NS_LOG_INFO("Try enqueue mice");
+      if(m_miceNPcks == m_miceMaxPackets)
+	{
+	  NS_LOG_INFO("The mice queue is full, drop");
+	  Drop(item->GetPacket());
+	  return false;
+	}
+      m_miceQueue.push(item);
+      m_miceNPcks  += 1;
+      m_miceNBytes += item->GetPacketSize();
+      return true;
     }
   else
     {
-      NS_LOG_INFO("Enqueue Elephant");
-      return m_elephantQueue->Enqueue(item);
+      NS_LOG_INFO("Try enqueue elephant");
+      if(m_elephantNPcks == m_elephantMaxPackets)
+	{
+	  NS_LOG_INFO("The elephant queue is full, drop");
+	  Drop(item->GetPacket());
+	  return false;
+	}
+
+      //TODO: Use the drop rate to decide whether to drop the elephant flow packets
+      m_elephantQueue.push(item);
+      m_elephantNPcks  += 1;
+      m_elephantNBytes += item->GetPacketSize();
+      return true;
     }
   
 }
@@ -154,27 +120,39 @@ Ptr<QueueItem>
 DiffQueue::DoDequeue()
 {
 
+  /*The steal must be sucess. Because if there is no packets in both queue.
+   * DoDequeue action will not happen.
+   */
   Ptr<QueueItem> item = 0;
-  if(m_currentQueue < m_miceWeight)
+
+  if( (m_currentQueue < m_miceWeight && !m_miceQueue.empty()) || 
+      (m_currentQueue >= m_miceWeight && m_elephantQueue.empty()))
     {
-      NS_LOG_LOGIC("Dequeue mice queue");
-      item = m_miceQueue->Dequeue();
-      if(item == 0)
-	{
-	  //mice queue is actually empty, so we dequeue elephant queue
-	  item = m_elephantQueue->Dequeue();
-	}
+      if(m_currentQueue < m_miceWeight) NS_LOG_INFO("Mice Turn, Mice dequeue");
+      else NS_LOG_INFO("Elep Turn, Mice steal");
+
+      NS_ASSERT(!m_miceQueue.empty());
+
+      item = m_miceQueue.front();
+	  
+      m_miceNBytes -= item->GetPacketSize();
+      m_miceNPcks  -= 1;
+      m_miceQueue.pop();
     }
-  else 
+  else
     {
-      NS_LOG_LOGIC("Dequeue elephant queue");
-      item = m_elephantQueue->Dequeue();
-      if (item == 0)
-	{
-	  //elephant queue is empty.
-	  item = m_miceQueue->Dequeue();
-	}
+      if(m_currentQueue >= m_miceWeight) NS_LOG_INFO("Elep Turn, Elep dequeue");
+      else NS_LOG_INFO("Mice Turn, Elep steal");
+      
+      NS_ASSERT(!m_elephantQueue.empty());
+      
+      item = m_elephantQueue.front();
+
+      m_elephantNBytes -= item->GetPacketSize();
+      m_elephantNPcks  -= 1;
+      m_elephantQueue.pop();
     }
+
   m_currentQueue = ( ++m_currentQueue ) % m_totalWeight;
   return item;
 }

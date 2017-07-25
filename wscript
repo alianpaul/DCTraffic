@@ -214,9 +214,8 @@ def build(bld):
         obj.source.append('model/matrix-decoder.cc')
         #queue management
         obj.source.append('queue/diff-queue.cc')
-        obj.source.append('queue/mice-queue.cc')
-        obj.source.append('queue/elephant-queue.cc')
-        obj.source.append('queue/queue-config.cc')
+        #obj.source.append('queue/mice-queue.cc')
+        #obj.source.append('queue/elephant-queue.cc')
         obj.source.append('queue/queue-controller.cc')
         #cplex
         obj.source.append('solver/cplex-solve.cc')
@@ -250,9 +249,8 @@ def build(bld):
         headers.source.append('model/matrix-radar-config.h')
         #queue management
         headers.source.append("queue/diff-queue.h")
-        headers.source.append("queue/mice-queue.h")
-        headers.source.append("queue/elephant-queue.h")
-        headers.source.append("queue/queue-config.h")
+        #headers.source.append("queue/mice-queue.h")
+        #headers.source.append("queue/elephant-queue.h")
         headers.source.append("queue/queue-controller.h")
         
 

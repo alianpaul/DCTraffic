@@ -16,7 +16,7 @@
 #include "ns3/arp-cache.h"
 #include "ns3/object-factory.h"
 #include "ns3/csma-net-device.h"
-#include "ns3/queue-config.h"
+
 #include "ns3/diff-queue.h"
 #include "ns3/queue-controller.h"
 
@@ -433,31 +433,31 @@ DCTopology::SetSWNetdeviceQueue (QueueMode queueType)
       NS_LOG_INFO("Queue Type: DiffQueue");
       ObjectFactory queueFactory;
       queueFactory.SetTypeId ("ns3::DiffQueue");
-      queueFactory.Set("MiceMaxPackets", UintegerValue(50));
-      queueFactory.Set("ElephantMaxPackets", UintegerValue(100));
+      queueFactory.Set("MiceMaxPackets", UintegerValue(100));
+      queueFactory.Set("ElephantMaxPackets", UintegerValue(50));
       //queueFactory.Set("MaxPackets", UintegerValue(MAX_INT));
-      queueFactory.Set("MaxPackets", UintegerValue(150));
+      queueFactory.Set("MaxPackets", UintegerValue(150)); //
 
       for(unsigned isw = 0; isw < m_switchPortDevices.size(); ++isw)
 	{
 	  NetDeviceContainer& swDevices   = m_switchPortDevices[isw];
-	  Ptr<QueueConfig>    queueConfig = Create<QueueConfig>(isw + m_numHost);   //1 queue config per switch
-
+     
 	  m_queueController->SetSWDiffQueueNum( isw + m_numHost, swDevices.GetN());  //the swID = isw + m_numHost
-	  m_queueController->RegisterQueueConfig( isw + m_numHost, queueConfig);
 
 	  for(unsigned idevice = 0; idevice < swDevices.GetN(); ++idevice)
 	    {
 	      //install a diff queue on the net device
-	      Ptr<CsmaNetDevice> device     = DynamicCast<CsmaNetDevice> (swDevices.Get(idevice)); 
+	      Ptr<CsmaNetDevice> device     = DynamicCast<CsmaNetDevice> (swDevices.Get(idevice));
+	      int                portID     = device->GetIfIndex(); //device id == port id == queue id
 	      Ptr<DiffQueue>     diffQueue  = queueFactory.Create<DiffQueue>();
-	      diffQueue->SetQueueConfig(queueConfig); //each diff queue has a ref to the according queueconfig
-	      diffQueue->Init();
+
+	      diffQueue->SetSWID (isw + m_numHost);
+	      diffQueue->SetPortID (portID);
+
 	      device->SetQueue(diffQueue);
 
 	      //register the diff queue to the queue controller
-	      int idQueue = device->GetIfIndex(); //device id == port id == queue id
-	      m_queueController->RegisterDiffQueue( isw + m_numHost, idQueue, diffQueue);
+	      m_queueController->RegisterDiffQueue( isw + m_numHost, portID, diffQueue);
 	    }
 	}
       
