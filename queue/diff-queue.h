@@ -34,6 +34,7 @@ public:
  
   void      ClearElephantFlowInfo() { m_elephantFlowInfo.clear();}
   void      SetElephantFlowInfo(const FlowField& ef, float droprate) { m_elephantFlowInfo[ef] = droprate;}
+  void      PrintElephantFlowInfo() const;
 
 private:
 

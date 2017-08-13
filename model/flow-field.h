@@ -58,8 +58,8 @@ struct PckByteFlowCnt
   {}
   PckByteFlowCnt(size_t p, size_t b, size_t f) : m_packetCnt(p), m_byteCnt(b), m_flowCnt(f)
   {}
-  uint16_t m_packetCnt;
-  uint32_t m_byteCnt;
+  uint32_t m_packetCnt;
+  uint64_t m_byteCnt;
   uint16_t m_flowCnt;
 };
 
@@ -69,8 +69,8 @@ struct PckByteCnt
   {}
   PckByteCnt(size_t p, size_t b) : m_packetCnt(p), m_byteCnt(b)
   {} 
-  uint16_t m_packetCnt;
-  uint32_t m_byteCnt;
+  uint32_t m_packetCnt;
+  uint64_t m_byteCnt;
 };
 
 struct PckByteCntByteGreater

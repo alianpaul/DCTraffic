@@ -59,7 +59,7 @@ void
 QueueController::AddRouteTableEntry(int swID, Ipv4Address ipDstAddr, int swOutPort)
 {
   //NS_LOG_INFO("SWID " << swID <<" DstIP " <<ipDstAddr << " OutPort " <<swOutPort);
-  int isw = swID - m_numHost; 
+  int isw           = swID - m_numHost; 
   RouteTable_t& rt  = m_swRouteTable[isw];
   RouteTable_t::iterator it = std::find_if(rt.begin(), 
 					   rt.end(), 
@@ -89,9 +89,8 @@ QueueController::ReceiveDecodedFlow(int swID, const FlowInfoVec_t<PckByteCnt>& f
 
   //Print out the route table to check out
   NS_LOG_INFO("SW " << swID << " Route Table\n" << routeTable);
-  
-  ConfigQueuesOnSwtch(queuesFlowStat, diffQueues);  //configure each queue according to the flow statistics
-  
+
+  ConfigQueuesOnSwtch(queuesFlowStat, diffQueues);  //Configure each queue according to the flow statistics
 }
 
 void
@@ -104,22 +103,23 @@ QueueController::ConfigQueuesOnSwtch(const std::vector<FlowStat>& queuesFlowStat
       const FlowStat& flowStat  = queuesFlowStat[i];    
       Ptr<DiffQueue>  diffQueue = queues[i];
 
-      //Set the ElephantFlowInfo of the diffQueue
+      //1.Set the ElephantFlowInfo of the diffQueue
       diffQueue->ClearElephantFlowInfo();
       for(size_t ie = 0; ie < flowStat.m_elephantCnt; ++ie)
 	{
-	  const FlowField&  eflow = flowStat.m_sortedFlowPckByteInfo[ie].first;
-	  //const PckByteCnt& ePB   = flowStat.m_sortedFlowPckByteInfo[ie].second;
-	  
-	  //TODO: Calculate the drop rate
-	  float droprate = 0.f;
+	  const FlowField&  eflow   = flowStat.m_sortedFlowPckByteInfo[ie].first;
+	  uint32_t          pckCnt  = flowStat.m_sortedFlowPckByteInfo[ie].second.m_packetCnt;
+	  //uint64_t          byteCnt = flowStat.m_sortedFlowPckByteInfo[ie].second.m_byteCnt;
+
+	  //Calculate the drop rate
+	  float droprate = (float) pckCnt / (float) flowStat.m_elephantPckTotalCnt;
 	  diffQueue->SetElephantFlowInfo( eflow, droprate );
 	}
 
-      //Set the elephant mice maxPackets of the diffQueue
-      uint64_t totalP = flowStat.m_micePckTotalCnt + flowStat.m_elephantPckTotalCnt;
-      float micePercent = (float) flowStat.m_micePckTotalCnt / (float) totalP;
-      //TODO:
+      //2.Set the elephant mice maxPackets of the diffQueue
+      uint64_t totalPck    = flowStat.m_micePckTotalCnt + flowStat.m_elephantPckTotalCnt;
+      float    micePercent = (float) flowStat.m_micePckTotalCnt / (float) totalPck;
+      //TODO: How big ?
       float miceExpand  = 1.2;
       micePercent *= miceExpand;
 
@@ -127,17 +127,31 @@ QueueController::ConfigQueuesOnSwtch(const std::vector<FlowStat>& queuesFlowStat
       uint32_t queueMiceMaxPackets     = queueTotalMaxPackets * micePercent;
       uint32_t queueElephantMaxPackets = queueTotalMaxPackets - queueMiceMaxPackets;
 
-      NS_ASSERT(queueMiceMaxPackets >= 0);
-      NS_ASSERT(queueElephantMaxPackets >= 0);
+      NS_ASSERT(queueMiceMaxPackets > 0);
+      NS_ASSERT(queueElephantMaxPackets > 0);
 
       diffQueue->SetMiceMaxPackets( queueMiceMaxPackets );
       diffQueue->SetElephantMaxPackets( queueElephantMaxPackets );
 
-      NS_LOG_INFO("Queue " << i << " FlowStat\n" << flowStat);       
-      NS_LOG_INFO("new mice: " << queueMiceMaxPackets);
-      NS_LOG_INFO("new elep: " << queueElephantMaxPackets);
+      //3.Set the elephant mice bandwidth()
+      uint16_t totalWeight   = diffQueue->GetTotalWeight();
+      uint16_t newMiceWeight = totalWeight * micePercent;
+      if(newMiceWeight >= totalWeight)
+	{
+	  newMiceWeight = totalWeight - 2;
+	}
+      else if(newMiceWeight == 0)
+	{
+	  newMiceWeight = 2;
+	}
+      diffQueue->SetMiceWeight(newMiceWeight);
 
-      
+      NS_LOG_INFO("Queue " << i << " FlowStat\n" << flowStat);       
+      NS_LOG_INFO("new mice maxPackets: " << diffQueue->GetMiceMaxPackets());
+      NS_LOG_INFO("new elep maxPackets: " << diffQueue->GetElephantMaxPackets());
+      NS_LOG_INFO("new mice BD: " << diffQueue->GetMiceWeight() << 
+		  " Total BD: "   << diffQueue->GetTotalWeight());
+      diffQueue->PrintElephantFlowInfo();      
     }
 }
 
@@ -176,7 +190,7 @@ QueueController::ComputeFlowStatistics(const FlowInfoVec_t<PckByteCnt>& flowPckB
 		PckByteCntByteGreater());
       
       flowStat.m_totalFlowCnt = flowStat.m_sortedFlowPckByteInfo.size();
-      flowStat.m_elephantCnt  = flowStat.m_totalFlowCnt * 0.5; //TODO: How big is the threshold
+      flowStat.m_elephantCnt  = flowStat.m_totalFlowCnt * 0.2; //TODO: How big is the threshold
       flowStat.m_miceCnt      = flowStat.m_totalFlowCnt - flowStat.m_elephantCnt;
 
       size_t i = 0;

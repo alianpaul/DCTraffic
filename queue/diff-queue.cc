@@ -5,6 +5,9 @@
 #include "ns3/ipv4-l3-protocol.h"
 #include "ns3/ethernet-header.h"
 
+#include <cstdlib>
+#include <iostream>
+
 namespace ns3
 {
 
@@ -30,13 +33,13 @@ TypeId DiffQueue::GetTypeId ()
 		  MakeUintegerChecker<uint32_t> ())
     .AddAttribute("MiceWeight",
 		  "The mice queue weight of scheduling",
-		  UintegerValue(1),
+		  UintegerValue(5),
 		  MakeUintegerAccessor (&DiffQueue::SetMiceWeight,
 					&DiffQueue::GetMiceWeight),
 		  MakeUintegerChecker<uint16_t> ())
     .AddAttribute("TotalWeight",
 		  "The total queue weight of mice and elephant",
-		  UintegerValue(2),
+		  UintegerValue(10),
 		  MakeUintegerAccessor (&DiffQueue::SetTotalWeight,
 					&DiffQueue::GetTotalWeight),
 		  MakeUintegerChecker<uint16_t> ())
@@ -86,7 +89,7 @@ DiffQueue::DoEnqueue(Ptr<QueueItem> item)
   if(ie == m_elephantFlowInfo.end())
     {
       NS_LOG_INFO("Try enqueue mice");
-      if(m_miceNPcks == m_miceMaxPackets)
+      if(m_miceNPcks >= m_miceMaxPackets)
 	{
 	  NS_LOG_INFO("The mice queue is full, drop");
 	  Drop(item->GetPacket());
@@ -100,11 +103,26 @@ DiffQueue::DoEnqueue(Ptr<QueueItem> item)
   else
     {
       NS_LOG_INFO("Try enqueue elephant");
-      if(m_elephantNPcks == m_elephantMaxPackets)
+      if(m_elephantNPcks >= m_elephantMaxPackets)
 	{
+	  //The queue is full
 	  NS_LOG_INFO("The elephant queue is full, drop");
 	  Drop(item->GetPacket());
 	  return false;
+	}
+      else if(m_elephantNPcks >= m_elephantMaxPackets * 0.8)
+	{
+	  //The queue is almost full, do active queue management. drop the packet randomly
+	  //according to the drop rate of the flow
+	  NS_LOG_INFO("The elephant queue is almost full, AQM");
+	  float bar      = (float) (std::rand()) / (float) RAND_MAX;
+	  float dropRate = ie->second; 
+	  if(bar < dropRate)
+	    {
+	      NS_LOG_INFO("AQM drop");
+	      Drop(item->GetPacket());
+	      return false;
+	    }
 	}
 
       //TODO: Use the drop rate to decide whether to drop the elephant flow packets
@@ -161,6 +179,16 @@ Ptr<const QueueItem>
 DiffQueue::DoPeek () const
 {
   return 0;
+}
+
+void DiffQueue::PrintElephantFlowInfo() const
+{
+  std::cout << "elep flow drop rate" << std::endl;
+  ElephantFlowInfo_t::const_iterator it = m_elephantFlowInfo.begin();
+  for(;it != m_elephantFlowInfo.end(); ++it)
+    {
+      std::cout << it->first << " drop rate " << it->second << std::endl;
+    }
 }
 
 }
